@@ -1,16 +1,12 @@
-import { getSupabaseBrowserClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/config';
-import { SYNC_CONSTANTS } from '../constants/sync.constants';
-
-const ALLOWED_MIME_TYPES = [
-  'video/mp4',
-  'video/webm',
-  'video/ogg',
-  'video/quicktime',
-];
+import { IVideoStorageProvider, StorageValidationResult } from '@/core/types/storage.types';
+import { SupabaseStorageProvider } from '@/core/adapters/storage/SupabaseStorageProvider';
+import { LocalStorageProvider } from '@/core/adapters/storage/LocalStorageProvider';
+import { bandwidthService } from './bandwidthService';
 
 export interface UploadResult {
   url: string;
+  filePath?: string;
   filename: string;
   sizeBytes: number;
   error?: string;
@@ -18,108 +14,105 @@ export interface UploadResult {
 
 export const storageService = {
   /**
-   * Validates file size and format against 50MB free-tier constraints.
+   * Lazily resolves the active storage provider.
    */
-  validateVideoFile(file: File): { isValid: boolean; error?: string } {
-    if (!file) {
-      return { isValid: false, error: 'No file provided.' };
+  getProvider(): IVideoStorageProvider {
+    if (isSupabaseConfigured()) {
+      return new SupabaseStorageProvider();
     }
-
-    if (file.size > SYNC_CONSTANTS.MAX_UPLOAD_SIZE_BYTES) {
-      const maxMb = SYNC_CONSTANTS.MAX_UPLOAD_SIZE_BYTES / (1024 * 1024);
-      return {
-        isValid: false,
-        error: `File size exceeds the ${maxMb}MB limit. For longer movies or larger files, please paste a direct video URL.`,
-      };
-    }
-
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      return {
-        isValid: false,
-        error: 'Unsupported file format. Please upload an MP4, WebM, or MOV video.',
-      };
-    }
-
-    return { isValid: true };
+    return new LocalStorageProvider();
   },
 
   /**
-   * Uploads personal video to Supabase Storage bucket 'videos'
-   * or falls back to browser Blob URL for local development.
+   * Validates file size and format against 50MB free-tier constraints.
+   */
+  validateVideoFile(file: File): StorageValidationResult {
+    return this.getProvider().validateFile(file);
+  },
+
+  /**
+   * Uploads personal video through the active storage provider,
+   * enforcing bandwidth quotas, per-user limits, and per-room limits.
    */
   async uploadVideo(
     file: File,
     roomId: string,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    userId: string = 'guest'
   ): Promise<UploadResult> {
-    const validation = this.validateVideoFile(file);
-    if (!validation.isValid) {
-      return { url: '', filename: file.name, sizeBytes: file.size, error: validation.error };
-    }
+    const provider = this.getProvider();
 
-    // Dev Fallback Mode: generate object URL
-    if (!isSupabaseConfigured()) {
-      if (onProgress) {
-        onProgress(30);
-        await new Promise((r) => setTimeout(r, 150));
-        onProgress(70);
-        await new Promise((r) => setTimeout(r, 150));
-        onProgress(100);
-      }
-      const localBlobUrl = URL.createObjectURL(file);
-      return {
-        url: localBlobUrl,
-        filename: file.name,
-        sizeBytes: file.size,
-      };
-    }
+    // 1. Quota & Bandwidth Eligibility Check
+    const eligibility = await bandwidthService.checkUploadEligibility({
+      userId,
+      roomId,
+      fileSizeBytes: file.size,
+    });
 
-    try {
-      const supabase = getSupabaseBrowserClient();
-      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const filePath = `${roomId}/${Date.now()}_${sanitizedName}`;
-
-      if (onProgress) onProgress(20);
-
-      const { data, error } = await supabase.storage
-        .from('videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-        });
-
-      if (error || !data) {
-        return {
-          url: '',
-          filename: file.name,
-          sizeBytes: file.size,
-          error: error?.message || 'Failed to upload video to storage.',
-        };
-      }
-
-      if (onProgress) onProgress(80);
-
-      // Get public URL
-      const { data: publicUrlData } = supabase.storage
-        .from('videos')
-        .getPublicUrl(filePath);
-
-      if (onProgress) onProgress(100);
-
-      return {
-        url: publicUrlData.publicUrl,
-        filename: file.name,
-        sizeBytes: file.size,
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown upload error';
+    if (!eligibility.allowed) {
       return {
         url: '',
         filename: file.name,
         sizeBytes: file.size,
-        error: msg,
+        error: eligibility.message || 'Upload restricted by bandwidth limits.',
       };
     }
+
+    // 2. Perform provider-specific upload
+    const uploadRes = await provider.uploadVideo(file, {
+      roomId,
+      userId,
+      onProgress,
+    });
+
+    if (uploadRes.error || !uploadRes.url) {
+      return {
+        url: '',
+        filePath: uploadRes.filePath,
+        filename: file.name,
+        sizeBytes: file.size,
+        error: uploadRes.error || 'Upload failed.',
+      };
+    }
+
+    // 3. Record upload in tracking service
+    await bandwidthService.recordUpload({
+      userId,
+      roomId,
+      filePath: uploadRes.filePath,
+      sizeBytes: uploadRes.sizeBytes,
+    });
+
+    return {
+      url: uploadRes.url,
+      filePath: uploadRes.filePath,
+      filename: uploadRes.filename,
+      sizeBytes: uploadRes.sizeBytes,
+    };
+  },
+
+  /**
+   * Refreshes a signed URL for a private video object and logs egress metrics.
+   */
+  async getSignedVideoUrl(filePath: string, expiresInSeconds = 21600): Promise<string | null> {
+    const provider = this.getProvider();
+    const signedUrl = await provider.getSignedPlaybackUrl(filePath, expiresInSeconds);
+
+    if (signedUrl) {
+      // Record stream egress estimate (~25MB average buffer allocation per streaming session)
+      await bandwidthService.recordEgress({
+        filePath,
+        bytesServed: 25 * 1024 * 1024,
+      });
+    }
+
+    return signedUrl;
+  },
+
+  /**
+   * Idempotently removes a video file from storage.
+   */
+  async deleteVideo(filePath: string): Promise<boolean> {
+    return this.getProvider().deleteVideo(filePath);
   },
 };
-

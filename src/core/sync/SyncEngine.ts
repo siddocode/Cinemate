@@ -1,4 +1,4 @@
-import { IVideoPlayerAdapter } from '../types/player.types';
+import { IVideoPlayerAdapter, VideoSourceType } from '../types/player.types';
 import { SyncAction, SyncStatePayload, DriftCorrection } from '../types/sync.types';
 import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -9,7 +9,16 @@ export interface SyncEngineConfig {
   roomId: string;
   userId: string;
   isHost: boolean;
+  videoUrl?: string;
+  videoType?: VideoSourceType;
+  initialPlayback?: {
+    position: number;
+    isPlaying: boolean;
+    lastSyncedAt: string;
+  };
   onDriftUpdated?: (driftSeconds: number, isSynced: boolean) => void;
+  onPersistSnapshot?: (position: number, isPlaying: boolean) => void;
+  onVideoMismatch?: (videoUrl: string, videoType?: VideoSourceType) => void;
 }
 
 export class SyncEngine {
@@ -18,11 +27,19 @@ export class SyncEngine {
   private roomId: string;
   private userId: string;
   private isHost: boolean;
+  private videoUrl?: string;
+  private videoType?: VideoSourceType;
 
   private isRemoteSyncing: boolean = false;
+  private isDestroyed: boolean = false;
+  private hasReceivedRemoteSync: boolean = false;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatTickCount: number = 0;
+  private syncRetryTimers: NodeJS.Timeout[] = [];
   private nudgeResetTimer: NodeJS.Timeout | null = null;
   private onDriftUpdated?: (driftSeconds: number, isSynced: boolean) => void;
+  private onPersistSnapshot?: (position: number, isPlaying: boolean) => void;
+  private onVideoMismatch?: (videoUrl: string, videoType?: VideoSourceType) => void;
 
   constructor(config: SyncEngineConfig) {
     this.adapter = config.adapter;
@@ -30,15 +47,71 @@ export class SyncEngine {
     this.roomId = config.roomId;
     this.userId = config.userId;
     this.isHost = config.isHost;
+    this.videoUrl = config.videoUrl;
+    this.videoType = config.videoType;
     this.onDriftUpdated = config.onDriftUpdated;
+    this.onPersistSnapshot = config.onPersistSnapshot;
+    this.onVideoMismatch = config.onVideoMismatch;
 
     this.setupListeners();
 
     if (this.isHost) {
+      // Broadcast current state immediately so any waiting viewers sync right away
+      const state = this.adapter.getPlaybackState();
+      this.broadcastState('HEARTBEAT', state.currentTime, state.isPlaying);
       this.startHostHeartbeat();
     } else {
-      this.requestInitialSync();
+      if (
+        config.initialPlayback &&
+        (config.initialPlayback.isPlaying || config.initialPlayback.position > 0.5)
+      ) {
+        const lastSyncedMs = Date.parse(config.initialPlayback.lastSyncedAt || '');
+        const elapsedSec =
+          config.initialPlayback.isPlaying && !Number.isNaN(lastSyncedMs)
+            ? Math.max(0, Math.min(300, (Date.now() - lastSyncedMs) / 1000))
+            : 0;
+        const targetPos = config.initialPlayback.position + elapsedSec;
+        void this.applyInitialSnapshot(targetPos, config.initialPlayback.isPlaying);
+      }
+      this.requestInitialSyncWithRetries();
     }
+  }
+
+  private async applyInitialSnapshot(position: number, isPlaying: boolean) {
+    if (this.isDestroyed || this.hasReceivedRemoteSync) return;
+    this.isRemoteSyncing = true;
+    try {
+      if (position > 0.5) {
+        await this.adapter.seekTo(position);
+      }
+      if (isPlaying) {
+        await this.adapter.play();
+      }
+    } finally {
+      setTimeout(() => {
+        this.isRemoteSyncing = false;
+      }, 300);
+    }
+  }
+
+  private requestInitialSyncWithRetries() {
+    this.clearSyncRetries();
+    this.requestInitialSync();
+
+    // Retry briefly in case host's player/channel finished initializing slightly after viewer
+    [1000, 2500].forEach((delayMs) => {
+      const timer = setTimeout(() => {
+        if (!this.isDestroyed && !this.isHost && !this.hasReceivedRemoteSync) {
+          this.requestInitialSync();
+        }
+      }, delayMs);
+      this.syncRetryTimers.push(timer);
+    });
+  }
+
+  private clearSyncRetries() {
+    this.syncRetryTimers.forEach((t) => clearTimeout(t));
+    this.syncRetryTimers = [];
   }
 
   public updateRole(isHost: boolean) {
@@ -57,23 +130,26 @@ export class SyncEngine {
 
   private setupListeners() {
     this.adapter.on('PLAY', (state) => {
-      if (this.isRemoteSyncing) return;
+      if (this.isDestroyed || this.isRemoteSyncing) return;
       if (this.isHost) {
         this.broadcastState('PLAY', state.currentTime, true);
+        this.onPersistSnapshot?.(state.currentTime, true);
       }
     });
 
     this.adapter.on('PAUSE', (state) => {
-      if (this.isRemoteSyncing) return;
+      if (this.isDestroyed || this.isRemoteSyncing) return;
       if (this.isHost) {
         this.broadcastState('PAUSE', state.currentTime, false);
+        this.onPersistSnapshot?.(state.currentTime, false);
       }
     });
 
     this.adapter.on('SEEKED', (state) => {
-      if (this.isRemoteSyncing) return;
+      if (this.isDestroyed || this.isRemoteSyncing) return;
       if (this.isHost) {
         this.broadcastState('SEEK', state.currentTime, state.isPlaying);
+        this.onPersistSnapshot?.(state.currentTime, state.isPlaying);
       }
     });
 
@@ -81,13 +157,15 @@ export class SyncEngine {
   }
 
   private setupBroadcastSubscription() {
-    if (!this.channel) return;
+    if (!this.channel || this.isDestroyed) return;
 
     this.channel.on('broadcast', { event: 'SYNC_STATE' }, (payload: { payload: SyncStatePayload }) => {
+      if (this.isDestroyed) return;
       this.handleIncomingSync(payload.payload);
     });
 
     this.channel.on('broadcast', { event: 'REQUEST_SYNC' }, () => {
+      if (this.isDestroyed) return;
       if (this.isHost) {
         const state = this.adapter.getPlaybackState();
         this.broadcastState('HEARTBEAT', state.currentTime, state.isPlaying);
@@ -104,7 +182,7 @@ export class SyncEngine {
     isPlaying?: boolean,
     videoUrl?: string
   ) {
-    if (!this.isHost || !this.channel) return;
+    if (!this.isHost || !this.channel || this.isDestroyed) return;
 
     const state = this.adapter.getPlaybackState();
     const payload: SyncStatePayload = {
@@ -115,12 +193,13 @@ export class SyncEngine {
       position: position !== undefined ? position : state.currentTime,
       isPlaying: isPlaying !== undefined ? isPlaying : state.isPlaying,
       playbackRate: state.playbackRate,
-      videoUrl,
+      videoUrl: videoUrl ?? this.videoUrl,
+      videoType: this.videoType,
       sentAt: Date.now(),
     };
 
     try {
-      this.channel.send({
+      void this.channel.send({
         type: 'broadcast',
         event: 'SYNC_STATE',
         payload,
@@ -134,10 +213,10 @@ export class SyncEngine {
    * Request synchronization from Host (e.g. newcomer or tab refocus).
    */
   public requestInitialSync() {
-    if (this.isHost || !this.channel) return;
+    if (this.isHost || !this.channel || this.isDestroyed) return;
 
     try {
-      this.channel.send({
+      void this.channel.send({
         type: 'broadcast',
         event: 'REQUEST_SYNC',
         payload: { userId: this.userId, requestedAt: Date.now() },
@@ -151,9 +230,18 @@ export class SyncEngine {
    * Evaluates incoming host state and corrects playback drift.
    */
   private async handleIncomingSync(payload: SyncStatePayload) {
+    if (this.isDestroyed) return;
     // Hosts ignore sync broadcasts from other users
     if (this.isHost) return;
     if (payload.roomId !== this.roomId) return;
+
+    this.hasReceivedRemoteSync = true;
+    this.clearSyncRetries();
+
+    if (payload.videoUrl && this.videoUrl && payload.videoUrl !== this.videoUrl) {
+      this.onVideoMismatch?.(payload.videoUrl, payload.videoType);
+      return;
+    }
 
     // Suppress loops
     this.isRemoteSyncing = true;
@@ -181,17 +269,22 @@ export class SyncEngine {
         );
       }
 
-      // 1. Play / Pause State Reconciliation
+      // 1. Seek FIRST if needed so YouTube/HTML5 starts cleanly at the target timestamp
+      const needsPausedSeek =
+        !payload.isPlaying && Math.abs(drift) > SYNC_CONSTANTS.DEADBAND_SECONDS;
+      if (payload.action === 'SEEK' || correction.action === 'HARD_SEEK' || needsPausedSeek) {
+        await this.adapter.seekTo(authoritativePosition);
+      }
+
+      // 2. Play / Pause State Reconciliation
       if (payload.isPlaying && !localState.isPlaying) {
         await this.adapter.play();
       } else if (!payload.isPlaying && localState.isPlaying) {
         await this.adapter.pause();
       }
 
-      // 2. Playback Position Correction
-      if (payload.action === 'SEEK' || correction.action === 'HARD_SEEK') {
-        await this.adapter.seekTo(authoritativePosition);
-      } else if (correction.action === 'RATE_ADJUST' && payload.isPlaying) {
+      // 3. Smooth Rate Nudge for Micro-drift
+      if (correction.action === 'RATE_ADJUST' && payload.isPlaying) {
         this.applyRateNudge(correction.suggestedRate || 1.0);
       }
     } finally {
@@ -255,12 +348,14 @@ export class SyncEngine {
 
   private startHostHeartbeat() {
     this.stopHostHeartbeat();
+    this.heartbeatTickCount = 0;
     this.heartbeatTimer = setInterval(() => {
-      if (this.isHost) {
-        const state = this.adapter.getPlaybackState();
-        if (state.isPlaying) {
-          this.broadcastState('HEARTBEAT', state.currentTime, true);
-        }
+      if (this.isDestroyed || !this.isHost) return;
+      this.heartbeatTickCount += 1;
+      const state = this.adapter.getPlaybackState();
+      // Broadcast every tick (2.5s) while playing, and every 2nd tick (5s) while paused so late joiners sync
+      if (state.isPlaying || this.heartbeatTickCount % 2 === 0) {
+        this.broadcastState('HEARTBEAT', state.currentTime, state.isPlaying);
       }
     }, SYNC_CONSTANTS.HEARTBEAT_INTERVAL_MS);
   }
@@ -273,6 +368,8 @@ export class SyncEngine {
   }
 
   public destroy() {
+    this.isDestroyed = true;
+    this.clearSyncRetries();
     this.stopHostHeartbeat();
     if (this.nudgeResetTimer) {
       clearTimeout(this.nudgeResetTimer);

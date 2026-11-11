@@ -3,14 +3,29 @@ import { cn } from '@/lib/utils/cn';
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   glow?: boolean;
+  tone?: 'sand' | 'forest';
 }
 
-export const Card: React.FC<CardProps> = ({ className, glow = false, children, ...props }) => {
+export const Card: React.FC<CardProps> = ({
+  className,
+  glow = false,
+  tone = 'sand',
+  children,
+  ...props
+}) => {
+  const isSand = tone === 'sand';
+
   return (
     <div
       className={cn(
-        'relative bg-neutral-900/70 backdrop-blur-xl border border-neutral-800/80 rounded-2xl p-6 transition-all duration-200',
-        glow && 'shadow-xl shadow-indigo-500/5 border-indigo-500/20',
+        'relative rounded-2xl p-6 transition-colors duration-150',
+        isSand
+          ? 'bg-[#EDE2CA] text-[#102B23] border border-[#CDBF9F]/70'
+          : 'bg-[#173D30] text-[#F7F4EC] border border-[#E8DDC5]/16',
+        glow &&
+          (isSand
+            ? 'shadow-[0_24px_60px_rgba(4,14,10,0.45)]'
+            : 'border-[#E8DDC5]/28 shadow-[0_20px_50px_rgba(4,14,10,0.45)]'),
         className
       )}
       {...props}
@@ -19,4 +34,3 @@ export const Card: React.FC<CardProps> = ({ className, glow = false, children, .
     </div>
   );
 };
-

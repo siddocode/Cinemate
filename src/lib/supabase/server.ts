@@ -4,6 +4,10 @@ import { cookies } from 'next/headers';
 import { Database } from './database.types';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config';
 
+if (typeof window !== 'undefined') {
+  throw new Error('[Syncora] server.ts must only be imported and executed on the server.');
+}
+
 // Server-only secret key (sb_secret_...) - NEVER exposed to browser bundles
 const SUPABASE_SECRET_KEY =
   process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';

@@ -2,72 +2,180 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Tv, User, Edit2, Check } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronDown, LogIn, LogOut, Check } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
-import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { AuthModal } from '@/components/auth/AuthModal';
+import { BrandMark } from '@/components/common/BrandMark';
 
 export const Navbar: React.FC = () => {
-  const { user, setUsername } = useSession();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, isAuthenticated, setUsername, signOut } = useSession();
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
-  const [tempName, setTempName] = useState(user.username);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authTab, setAuthTab] = useState<'signin' | 'signup'>('signin');
+  const [tempName, setTempName] = useState(user.username || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
-  const handleOpenModal = () => {
-    setTempName(user.username);
+  const isAuthRoute =
+    pathname === '/login' || pathname === '/register' || pathname === '/auth';
+  const isRoomRoute = pathname?.startsWith('/room/');
+
+  const handleOpenNameModal = () => {
+    if (isSigningOut) return;
+    setTempName(user.username || '');
     setIsNameModalOpen(true);
   };
 
-  const handleSaveName = (e: React.FormEvent) => {
+  const handleSaveName = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (tempName.trim()) {
-      setUsername(tempName.trim());
+    if (isSavingName) return;
+    const trimmed = tempName.trim();
+    if (!trimmed) return;
+
+    setIsSavingName(true);
+    try {
+      await setUsername(trimmed);
       setIsNameModalOpen(false);
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleOpenAuth = (tab: 'signin' | 'signup') => {
+    setAuthTab(tab);
+    setIsAuthModalOpen(true);
+  };
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      router.push('/login');
+    } finally {
+      setIsSigningOut(false);
     }
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full border-b border-[#E8DDC5]/12 bg-[#0E281F]/95 backdrop-blur-sm">
+      <div
+        className={`${
+          isRoomRoute ? 'max-w-full' : 'max-w-7xl'
+        } mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-4`}
+      >
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-200">
-            <Tv className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
-                Syncora
-              </span>
-              <Badge variant="purple" className="text-[10px] px-1.5 py-0 font-medium">
-                Duo
-              </Badge>
-            </div>
-            <span className="text-[11px] text-neutral-400 -mt-1 hidden sm:inline">
-              Watch Together in Realtime
+        <Link href="/" className="flex items-center gap-2.5 group min-w-0">
+          <BrandMark size="sm" className="group-hover:border-[#9670FF]" />
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="font-serif text-xl sm:text-2xl font-medium tracking-tight text-[#F7F4EC] leading-none">
+              Syncora
+            </span>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#E8DDC5] text-[#102B23] text-[10px] font-bold uppercase tracking-[0.12em] leading-tight">
+              Lounge
             </span>
           </div>
         </Link>
 
         {/* User Identity / Session Controls */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleOpenModal}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800/60 transition-all text-xs text-neutral-300 group cursor-pointer"
-            title="Click to edit display name"
-          >
-            <div className="w-6 h-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-              <User className="w-3.5 h-3.5" />
-            </div>
-            <span
-              className="font-medium max-w-[120px] truncate text-white"
-              suppressHydrationWarning
-            >
-              {user.username}
-            </span>
-            <Edit2 className="w-3 h-3 text-neutral-500 group-hover:text-indigo-400 transition-colors" />
-          </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          {!isAuthenticated ? (
+            isAuthRoute ? (
+              <>
+                <Link href="/login">
+                  <Button
+                    variant={pathname === '/register' ? 'outline' : 'secondary'}
+                    size="sm"
+                    className="text-xs rounded-full px-3.5"
+                    leftIcon={<LogIn className="w-3.5 h-3.5 text-[#9670FF]" />}
+                  >
+                    Sign In
+                  </Button>
+                </Link>
+
+                <Link href="/register">
+                  <Button
+                    variant={pathname === '/register' ? 'primary' : 'outline'}
+                    size="sm"
+                    className="text-xs rounded-full px-4"
+                  >
+                    Register
+                  </Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenAuth('signin')}
+                  className="text-xs rounded-full px-3.5"
+                  leftIcon={<LogIn className="w-3.5 h-3.5 text-[#9670FF]" />}
+                >
+                  Sign In
+                </Button>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleOpenAuth('signup')}
+                  className="text-xs rounded-full px-4"
+                >
+                  Register
+                </Button>
+              </>
+            )
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleOpenNameModal}
+                disabled={isSigningOut}
+                className="flex items-center gap-2.5 pl-1.5 pr-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/20 hover:border-[#E8DDC5]/40 transition-colors text-xs group cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                title="Click to edit display name"
+              >
+                <div className="w-7 h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-xs uppercase shrink-0">
+                  {(user.username || user.email || 'U').charAt(0)}
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <span
+                    className="font-medium max-w-[92px] sm:max-w-[140px] truncate text-[#F7F4EC] leading-tight"
+                    suppressHydrationWarning
+                  >
+                    {user.username || 'User'}
+                  </span>
+                  {user.email && (
+                    <span className="text-[10px] text-[#CDBF9F]/75 max-w-[110px] sm:max-w-[150px] truncate hidden sm:block leading-tight">
+                      {user.email}
+                    </span>
+                  )}
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-[#CDBF9F]/70 group-hover:text-[#F7F4EC] transition-colors shrink-0" />
+              </button>
+
+              <div className="hidden sm:block h-5 w-px bg-[#E8DDC5]/15" />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSignOut}
+                isLoading={isSigningOut}
+                className="text-xs text-[#E8DDC5]/85 hover:text-[#F7F4EC] rounded-full"
+                title="Sign Out"
+                leftIcon={<LogOut className="w-3.5 h-3.5" />}
+              >
+                <span className="hidden sm:inline">
+                  {isSigningOut ? 'Signing Out…' : 'Sign Out'}
+                </span>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -75,8 +183,9 @@ export const Navbar: React.FC = () => {
       <Modal
         isOpen={isNameModalOpen}
         onClose={() => setIsNameModalOpen(false)}
-        title="Set Your Display Name"
-        description="This is the name your watch partner will see in chat and room presence."
+        preventClose={isSavingName}
+        title="Display Name"
+        description="This name appears to your watch partner in room presence and live chat."
       >
         <form onSubmit={handleSaveName} className="space-y-4">
           <Input
@@ -85,14 +194,16 @@ export const Navbar: React.FC = () => {
             onChange={(e) => setTempName(e.target.value)}
             placeholder="e.g. Alex"
             maxLength={25}
+            disabled={isSavingName}
             autoFocus
           />
           <div className="flex justify-end gap-2 pt-2">
             <Button
               type="button"
-              variant="ghost"
+              variant="ghostSand"
               size="sm"
               onClick={() => setIsNameModalOpen(false)}
+              disabled={isSavingName}
             >
               Cancel
             </Button>
@@ -100,13 +211,24 @@ export const Navbar: React.FC = () => {
               type="submit"
               variant="primary"
               size="sm"
-              leftIcon={<Check className="w-4 h-4" />}
+              isLoading={isSavingName}
+              disabled={!tempName.trim()}
+              leftIcon={<Check className="w-3.5 h-3.5" />}
             >
-              Save Name
+              {isSavingName ? 'Saving…' : 'Save Name'}
             </Button>
           </div>
         </form>
       </Modal>
+
+      {/* Auth Modal (Sign In / Register) */}
+      {!isAuthRoute && (
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          initialTab={authTab}
+        />
+      )}
     </header>
   );
 };

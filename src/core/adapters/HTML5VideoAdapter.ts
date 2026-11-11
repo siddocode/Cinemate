@@ -20,7 +20,9 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
     video.className = 'w-full h-full object-contain bg-black';
     video.playsInline = true;
     video.crossOrigin = 'anonymous';
-    video.preload = 'auto';
+    // Bandwidth optimization: 'metadata' prevents browsers from downloading the entire video
+    // before playback begins. Range requests fetch only chunks as needed during active playback.
+    video.preload = 'metadata';
 
     if (initialUrl) {
       video.src = initialUrl;
@@ -77,8 +79,19 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
     if (!this.videoElement) return;
     try {
       await this.videoElement.play();
-    } catch (err) {
-      console.warn('[Syncora] HTML5 play error (e.g. autoplay restriction):', err);
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        try {
+          this.videoElement.muted = true;
+          await this.videoElement.play();
+          this.emit('AUTOPLAY_MUTED', this.getPlaybackState());
+          return;
+        } catch {
+          this.emit('AUTOPLAY_BLOCKED', this.getPlaybackState());
+          return;
+        }
+      }
+      console.warn('[Syncora] HTML5 play error:', err);
     }
   }
 

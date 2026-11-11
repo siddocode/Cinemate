@@ -4,9 +4,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   MessageSquare,
   Send,
-  Sparkles,
   Bell,
   BellOff,
+  PanelRightClose,
 } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { UserIdentity } from '@/core/types/session.types';
@@ -20,6 +20,8 @@ interface ChatContainerProps {
   user: UserIdentity;
   partnerName?: string;
   channel: RealtimeChannel | null;
+  onCollapse?: () => void;
+  voiceSection?: React.ReactNode;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
@@ -27,6 +29,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   user,
   partnerName,
   channel,
+  onCollapse,
+  voiceSection,
 }) => {
   const {
     messages,
@@ -43,7 +47,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
   const [input, setInput] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [pendingReaction, setPendingReaction] = useState<string | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const prevMessagesCountRef = useRef(messages.length);
 
   const playNotificationTone = useCallback(() => {
@@ -70,9 +75,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     }
   }, []);
 
-  // Auto-scroll on new message
+  // Auto-scroll ONLY the chat message list container (never the video player or window)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
 
     // Subtle audio chime on partner message if enabled
     if (messages.length > prevMessagesCountRef.current) {
@@ -82,7 +93,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       }
     }
     prevMessagesCountRef.current = messages.length;
-  }, [messages, user.id, soundEnabled, playNotificationTone]);
+  }, [messages, partnerTyping, user.id, soundEnabled, playNotificationTone]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -101,39 +112,67 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   };
 
   const handleQuickReaction = async (emoji: string) => {
-    await sendReaction(emoji);
+    if (pendingReaction !== null) return;
+    setPendingReaction(emoji);
+    try {
+      await sendReaction(emoji);
+    } finally {
+      setPendingReaction(null);
+    }
   };
 
   return (
-    <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-neutral-800/80 bg-neutral-950/70 flex flex-col h-64 lg:h-full shrink-0">
+    <aside className="w-full lg:w-[340px] xl:w-[380px] lg:flex-none flex-1 min-h-0 border-t lg:border-t-0 lg:border-l border-[#E8DDC5]/14 bg-[#133227] flex flex-col overflow-hidden">
       {/* Chat Header Bar */}
-      <div className="h-12 border-b border-neutral-800/80 px-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-purple-400" />
-          <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">
-            Duo Live Chat
+      <div className="h-11 sm:h-12 border-b border-[#E8DDC5]/12 bg-[#0E281F] px-4 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <MessageSquare className="w-3.5 h-3.5 text-[#9670FF] shrink-0" />
+          <span className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#E8DDC5] truncate">
+            Lounge Chat
           </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] shrink-0" />
         </div>
 
-        <button
-          onClick={() => setSoundEnabled((prev) => !prev)}
-          className="text-neutral-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-          title={soundEnabled ? 'Mute message chime' : 'Enable message chime'}
-        >
-          {soundEnabled ? (
-            <Bell className="w-3.5 h-3.5 text-indigo-400" />
-          ) : (
-            <BellOff className="w-3.5 h-3.5 text-neutral-600" />
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setSoundEnabled((prev) => !prev)}
+            className="text-[#CDBF9F] hover:text-[#F7F4EC] p-1.5 rounded-md hover:bg-[#E8DDC5]/8 transition-colors cursor-pointer"
+            title={soundEnabled ? 'Mute message chime' : 'Enable message chime'}
+            aria-label={soundEnabled ? 'Mute message chime' : 'Enable message chime'}
+          >
+            {soundEnabled ? (
+              <Bell className="w-3.5 h-3.5 text-[#E8DDC5]" />
+            ) : (
+              <BellOff className="w-3.5 h-3.5 text-[#CDBF9F]/45" />
+            )}
+          </button>
+
+          {onCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="hidden lg:inline-flex text-[#CDBF9F] hover:text-[#F7F4EC] p-1.5 rounded-md hover:bg-[#E8DDC5]/8 transition-colors cursor-pointer"
+              title="Collapse chat panel"
+              aria-label="Collapse chat panel"
+            >
+              <PanelRightClose className="w-3.5 h-3.5" />
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-3">
+      {/* Desktop Docked Voice Lounge Strip */}
+      {voiceSection}
+
+      {/* Independently Scrollable Messages Area */}
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto overscroll-contain touch-pan-y space-y-3"
+      >
         {isLoading && messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-xs text-neutral-500">
-            Loading chat...
+          <div className="flex items-center justify-center h-full text-xs font-mono text-[#CDBF9F]/70">
+            Loading conversation...
           </div>
         ) : (
           messages.map((msg) => {
@@ -142,9 +181,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
             if (isSystem) {
               return (
-                <div key={msg.id} className="text-center my-2">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] bg-neutral-900 border border-neutral-800 text-neutral-400 px-3 py-1 rounded-full shadow-sm">
-                    <Sparkles className="w-3 h-3 text-indigo-400" />
+                <div key={msg.id} className="text-center my-1.5">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] bg-[#0E281F] border border-[#E8DDC5]/12 text-[#CDBF9F] px-3 py-1 rounded-full">
+                    <span className="w-1 h-1 rounded-full bg-[#9670FF]" />
                     {msg.content}
                   </span>
                 </div>
@@ -157,12 +196,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 className={isMe ? 'flex flex-col items-end' : 'flex flex-col items-start'}
               >
                 <div className="max-w-[85%] space-y-1">
-                  <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 px-1">
-                    <span className="font-semibold text-neutral-300">
+                  <div
+                    className={`flex items-center gap-1.5 text-[10px] px-1 ${
+                      isMe ? 'justify-end text-[#CDBF9F]' : 'text-[#CDBF9F]/80'
+                    }`}
+                  >
+                    <span className="font-medium text-[#E8DDC5]">
                       {isMe ? 'You' : msg.username}
                     </span>
-                    <span>•</span>
-                    <span>
+                    <span className="text-[#E8DDC5]/30">·</span>
+                    <span className="font-mono text-[10px] text-[#CDBF9F]/65">
                       {new Date(msg.createdAt).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -170,10 +213,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     </span>
                   </div>
                   <div
-                    className={`text-xs px-3.5 py-2 rounded-2xl shadow-sm break-words leading-relaxed ${
+                    className={`text-xs px-3.5 py-2 rounded-2xl break-words leading-relaxed ${
                       isMe
-                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-tr-xs'
-                        : 'bg-neutral-800 border border-neutral-700/60 text-neutral-100 rounded-tl-xs'
+                        ? 'bg-[#1E4D3C] border border-[#9670FF]/40 text-[#F7F4EC] rounded-tr-xs'
+                        : 'bg-[#0E281F] border border-[#E8DDC5]/14 text-[#F7F4EC] rounded-tl-xs'
                     }`}
                   >
                     {msg.content}
@@ -186,30 +229,32 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
         {/* Partner Typing Indicator */}
         {partnerTyping && (
-          <div className="flex items-center gap-2 text-xs text-indigo-400 italic py-1 animate-pulse">
-            <span className="inline-flex gap-1 items-center bg-neutral-900 border border-neutral-800 px-2.5 py-1 rounded-full">
+          <div className="flex items-center text-[11px] text-[#CDBF9F] py-0.5">
+            <span className="inline-flex gap-2 items-center bg-[#0E281F] border border-[#E8DDC5]/14 px-2.5 py-1 rounded-full">
               <span>{partnerTyping || partnerName || 'Partner'} is typing</span>
-              <span className="flex gap-0.5">
-                <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce" />
-                <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce delay-100" />
-                <span className="w-1 h-1 rounded-full bg-indigo-400 animate-bounce delay-200" />
+              <span className="flex gap-1">
+                <span className="w-1 h-1 rounded-full bg-[#9670FF] animate-pulse" />
+                <span className="w-1 h-1 rounded-full bg-[#9670FF] animate-pulse delay-100" />
+                <span className="w-1 h-1 rounded-full bg-[#9670FF] animate-pulse delay-200" />
               </span>
             </span>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Emoji Reaction Pill Strip */}
-      <div className="px-3 pt-2 pb-1 border-t border-neutral-800/80 bg-neutral-950 flex items-center justify-between gap-1">
-        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar">
+      {/* Quick Emoji Reaction Strip */}
+      <div className="px-3 py-1.5 border-t border-[#E8DDC5]/10 bg-[#0E281F]/80 flex items-center shrink-0">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full justify-between">
           {QUICK_EMOJIS.map((emoji) => (
             <button
               key={emoji}
               type="button"
+              disabled={pendingReaction !== null}
               onClick={() => handleQuickReaction(emoji)}
-              className="text-sm px-1.5 py-0.5 rounded-lg hover:bg-neutral-800 transition-transform hover:scale-125 cursor-pointer"
+              className={`text-sm px-2 py-1 rounded-lg hover:bg-[#173D30] transition-transform hover:scale-110 cursor-pointer disabled:opacity-50 disabled:pointer-events-none ${
+                pendingReaction === emoji ? 'scale-110 animate-pulse' : ''
+              }`}
+              aria-label={`Send reaction ${emoji}`}
             >
               {emoji}
             </button>
@@ -220,15 +265,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* Chat Message Input Form */}
       <form
         onSubmit={handleSend}
-        className="p-3 border-t border-neutral-800/60 flex items-center gap-2 shrink-0 bg-neutral-950"
+        className="p-2.5 sm:p-3 border-t border-[#E8DDC5]/12 flex items-center gap-2 shrink-0 bg-[#0E281F]"
       >
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-0">
           <input
             type="text"
             value={input}
             onChange={handleInputChange}
-            placeholder={`Message ${partnerName || 'partner'}...`}
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+            placeholder={`Message ${partnerName || 'room'}...`}
+            className="w-full bg-[#173D30]/80 border border-[#E8DDC5]/18 rounded-xl px-3.5 py-2 text-xs text-[#F7F4EC] placeholder-[#CDBF9F]/45 focus:outline-none focus:border-[#9670FF] focus:ring-1 focus:ring-[#9670FF]/40 transition-colors"
           />
         </div>
 
@@ -236,12 +281,13 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           type="submit"
           size="sm"
           variant="primary"
-          className="h-8 px-3 shrink-0"
+          className="h-[34px] px-3 shrink-0"
           disabled={!input.trim()}
+          aria-label="Send message"
         >
           <Send className="w-3.5 h-3.5" />
         </Button>
       </form>
-    </div>
+    </aside>
   );
 };

@@ -20,3 +20,22 @@ export function getSupabaseBrowserClient() {
 
   return client;
 }
+
+/**
+ * Resolves a verified user JWT access token for private Realtime channel subscriptions,
+ * refreshing the session if the in-memory token is absent.
+ */
+export async function getAuthenticatedAccessToken(
+  supabaseClient: ReturnType<typeof getSupabaseBrowserClient> = getSupabaseBrowserClient()
+): Promise<string | undefined> {
+  const {
+    data: { session },
+  } = await supabaseClient.auth.getSession();
+
+  if (session?.access_token) {
+    return session.access_token;
+  }
+
+  const { data: refreshed } = await supabaseClient.auth.refreshSession();
+  return refreshed.session?.access_token ?? undefined;
+}

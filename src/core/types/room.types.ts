@@ -64,3 +64,9 @@ export interface DuoStatus {
   isPartnerConnected: boolean;
 }
 
+export interface UserRoomSummary extends Room {
+  userRole: RoomRole;
+  joinedAt: string;
+}
+
+

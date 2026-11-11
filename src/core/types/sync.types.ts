@@ -1,3 +1,5 @@
+import { VideoSourceType } from './player.types';
+
 /**
  * Synchronization engine data structures and payloads.
  */
@@ -19,6 +21,7 @@ export interface SyncStatePayload {
   isPlaying: boolean;
   playbackRate: number;
   videoUrl?: string;
+  videoType?: VideoSourceType;
   sentAt: number;         // Timestamp in epoch milliseconds
 }
 

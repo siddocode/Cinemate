@@ -29,14 +29,25 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files
+# env files & secrets
 .env*
 !.env.example
+*.key
+signing_keys.json
+
+# supabase cli local state & linked project config (keep migrations & full_setup.sql tracked)
+/supabase/.temp/
+/supabase/.branches/
+/supabase/.gitignore
+/supabase/config.toml
+/.supabase/
 
 # vercel
 .vercel
 
-# typescript
+# typescript & lint caches
 *.tsbuildinfo
 next-env.d.ts
+.eslintcache

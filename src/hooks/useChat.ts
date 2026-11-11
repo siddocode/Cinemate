@@ -4,14 +4,23 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { ChatMessage } from '@/core/types/room.types';
 import { UserIdentity } from '@/core/types/session.types';
 import { roomService } from '@/lib/services/roomService';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+  getAuthenticatedAccessToken,
+  getSupabaseBrowserClient,
+} from '@/lib/supabase/client';
 import { isSupabaseConfigured } from '@/lib/supabase/config';
+import {
+  RealtimeChatMessageRow,
+  RealtimeTypingPayload,
+  subscribeToRoomChatInserts,
+  subscribeToRoomTyping,
+} from '@/lib/supabase/roomRealtimeBus';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseChatProps {
   roomId: string;
   user: UserIdentity;
-  channel: RealtimeChannel | null;
+  channel?: RealtimeChannel | null;
 }
 
 export function useChat({ roomId, user, channel }: UseChatProps) {
@@ -20,6 +29,7 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTypingSentRef = useRef<number>(0);
 
   // 1. Load initial chat messages
   useEffect(() => {
@@ -41,7 +51,7 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
                 roomId,
                 userId: 'system',
                 username: 'Syncora',
-                content: 'Welcome to your Duo watch party! Chat in real-time as you watch together.',
+                content: 'Welcome to your watch party! Chat in real-time as you watch together.',
                 type: 'system',
                 createdAt: new Date().toISOString(),
               },
@@ -62,86 +72,106 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
     };
   }, [roomId]);
 
-  // 2. Realtime Subscription for incoming messages & typing
+  // 2. Realtime Subscription for incoming messages
+  // Reuses events dispatched by the unified room channel when channel prop is managed by useRoom
   useEffect(() => {
     if (!roomId || !isSupabaseConfigured()) return;
 
     const supabase = getSupabaseBrowserClient();
-    const chatChannelName = `room_chat:${roomId}`;
-    const chatChannel = supabase.channel(chatChannelName);
 
-    // Postgres Changes subscription for persistent messages
-    chatChannel
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `room_id=eq.${roomId}`,
-        },
-        async (payload) => {
-          const newRow = payload.new as {
-            id: string;
-            room_id: string;
-            user_id: string;
-            content: string;
-            type: 'chat' | 'system';
-            created_at: string;
-          };
+    const handleIncomingRow = async (newRow: RealtimeChatMessageRow) => {
+      let senderName = user.id === newRow.user_id ? user.username : 'Partner';
 
-          // If the message is from another user, fetch username or profile
-          let senderName = user.id === newRow.user_id ? user.username : 'Partner';
+      if (user.id !== newRow.user_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', newRow.user_id)
+          .maybeSingle();
 
-          if (user.id !== newRow.user_id) {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('username')
-              .eq('id', newRow.user_id)
-              .maybeSingle();
-
-            if (profile?.username) {
-              senderName = profile.username;
-            }
-          }
-
-          const incomingMsg: ChatMessage = {
-            id: newRow.id,
-            roomId: newRow.room_id,
-            userId: newRow.user_id,
-            username: senderName,
-            content: newRow.content,
-            type: newRow.type,
-            createdAt: newRow.created_at,
-          };
-
-          setMessages((prev) => {
-            // Avoid duplicate if optimistically added
-            if (prev.some((m) => m.id === incomingMsg.id)) {
-              return prev;
-            }
-            return [...prev, incomingMsg];
-          });
+        if (profile?.username) {
+          senderName = profile.username;
         }
-      )
-      .subscribe();
+      }
+
+      const incomingMsg: ChatMessage = {
+        id: newRow.id,
+        roomId: newRow.room_id,
+        userId: newRow.user_id,
+        username: senderName,
+        content: newRow.content,
+        type: newRow.type,
+        createdAt: newRow.created_at,
+      };
+
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incomingMsg.id)) {
+          return prev;
+        }
+        // Replace matching optimistic temp message if realtime arrives before insert response
+        const tempIndex = prev.findIndex(
+          (m) =>
+            m.id.startsWith('temp-') &&
+            m.userId === incomingMsg.userId &&
+            m.content === incomingMsg.content
+        );
+        if (tempIndex !== -1) {
+          return prev.map((m, idx) => (idx === tempIndex ? incomingMsg : m));
+        }
+        return [...prev, incomingMsg];
+      });
+    };
+
+    // Unified room channel mode (channel prop passed by RoomView/ChatContainer, even while null during initial connect)
+    if (channel !== undefined) {
+      return subscribeToRoomChatInserts(roomId, handleIncomingRow);
+    }
+
+    // Standalone fallback mode if no shared channel prop is supplied (private, members-only topic)
+    const standaloneChannel = supabase.channel(`room_chat:${roomId}`, {
+      config: { private: true },
+    });
+    let isDisposed = false;
+    standaloneChannel.on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `room_id=eq.${roomId}`,
+      },
+      (payload) => {
+        handleIncomingRow(payload.new as RealtimeChatMessageRow);
+      }
+    );
+
+    void (async () => {
+      try {
+        const token = await getAuthenticatedAccessToken(supabase);
+        await supabase.realtime.setAuth(token ?? null);
+      } catch (authErr) {
+        console.warn('[Syncora] Failed to refresh Realtime auth token:', authErr);
+      }
+      if (!isDisposed) standaloneChannel.subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(chatChannel);
+      isDisposed = true;
+      supabase.removeChannel(standaloneChannel);
     };
-  }, [roomId, user.id, user.username]);
+  }, [roomId, user.id, user.username, channel]);
 
   // 3. Typing indicator broadcast listener via shared channel
   useEffect(() => {
-    if (!channel) return;
+    if (!roomId || !channel) return;
 
-    channel.on(
-      'broadcast',
-      { event: 'CHAT_TYPING' },
-      (payload: { payload: { userId: string; username: string; isTyping: boolean } }) => {
-        if (payload.payload.userId !== user.id) {
-          if (payload.payload.isTyping) {
-            setPartnerTyping(payload.payload.username);
+    const unsubscribe = subscribeToRoomTyping(
+      roomId,
+      channel,
+      (payload: RealtimeTypingPayload) => {
+        if (payload.userId !== user.id) {
+          if (payload.isTyping) {
+            setPartnerTyping(payload.username);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
             typingTimeoutRef.current = setTimeout(() => {
               setPartnerTyping(null);
@@ -152,7 +182,15 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
         }
       }
     );
-  }, [channel, user.id]);
+
+    return () => {
+      unsubscribe();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    };
+  }, [roomId, channel, user.id]);
 
   // 4. Send Message function with optimistic local update
   const sendMessage = useCallback(
@@ -184,10 +222,14 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
         });
 
         if (saved) {
-          // Replace optimistic ID with server ID
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? saved : m))
-          );
+          // Replace optimistic ID with server ID, removing duplicate if realtime arrived first
+          setMessages((prev) => {
+            const alreadyPresent = prev.some((m) => m.id === saved.id);
+            if (alreadyPresent) {
+              return prev.filter((m) => m.id !== tempId);
+            }
+            return prev.map((m) => (m.id === tempId ? saved : m));
+          });
         }
       } catch (err) {
         console.warn('[Syncora] Send message error:', err);
@@ -204,10 +246,18 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
     [sendMessage]
   );
 
-  // 6. Broadcast typing state
+  // 6. Broadcast typing state (throttled to save Realtime message quota)
   const setTyping = useCallback(
     (isTyping: boolean) => {
       if (!channel) return;
+      const now = Date.now();
+
+      // Throttle typing 'true' events to once every 2.5 seconds; allow 'false' immediately
+      if (isTyping && now - lastTypingSentRef.current < 2500) {
+        return;
+      }
+      lastTypingSentRef.current = now;
+
       try {
         channel.send({
           type: 'broadcast',

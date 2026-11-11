@@ -8,26 +8,30 @@ import { YTPlayer, YTPlayerState } from './youtube.types';
 import { extractYouTubeId } from '@/lib/utils/youtube';
 
 export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
+  private static apiLoadPromise: Promise<void> | null = null;
+  private static instanceCounter = 0;
+
   private player: YTPlayer | null = null;
   private containerElement: HTMLElement | null = null;
   private eventHandlers: Map<PlayerEventType, Set<PlayerEventHandler>> = new Map();
   private updateInterval: NodeJS.Timeout | null = null;
+  private autoplayCheckTimer: NodeJS.Timeout | null = null;
   private isReady: boolean = false;
+  private isDestroyed: boolean = false;
+  private wantPlaying: boolean = false;
+  private pendingSeekTarget: number | null = null;
+  private pendingSeekAt: number = 0;
   private currentVideoId: string = '';
 
   /**
    * Loads the YouTube IFrame API script dynamically.
    */
   private static loadYouTubeScript(): Promise<void> {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined') return resolve();
+    if (typeof window === 'undefined') return Promise.resolve();
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    if (YouTubePlayerAdapter.apiLoadPromise) return YouTubePlayerAdapter.apiLoadPromise;
 
-      // If YouTube API is already loaded
-      if (window.YT && window.YT.Player) {
-        return resolve();
-      }
-
-      // Check if the script tag is already in DOM
+    YouTubePlayerAdapter.apiLoadPromise = new Promise((resolve) => {
       const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
       if (existingScript) {
         const checkInterval = setInterval(() => {
@@ -50,20 +54,28 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
       tag.async = true;
       document.body.appendChild(tag);
     });
+
+    return YouTubePlayerAdapter.apiLoadPromise;
   }
 
   async initialize(container: HTMLElement, initialVideoId: string): Promise<void> {
+    this.isDestroyed = false;
     this.containerElement = container;
     const cleanId = extractYouTubeId(initialVideoId) || initialVideoId;
     this.currentVideoId = cleanId;
 
     await YouTubePlayerAdapter.loadYouTubeScript();
 
+    if (this.isDestroyed) {
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       try {
-        // Create an inner mount div
+        // Create an inner mount div with unique ID (safe across Strict Mode double-mount)
         const mountDiv = document.createElement('div');
-        mountDiv.id = `yt-player-${Date.now()}`;
+        YouTubePlayerAdapter.instanceCounter += 1;
+        mountDiv.id = `yt-player-${Date.now()}-${YouTubePlayerAdapter.instanceCounter}`;
         mountDiv.className = 'w-full h-full';
         container.innerHTML = '';
         container.appendChild(mountDiv);
@@ -72,7 +84,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
           throw new Error('YouTube IFrame API failed to load.');
         }
 
-        this.player = new window.YT.Player(mountDiv, {
+        const playerInstance = new window.YT.Player(mountDiv, {
           width: '100%',
           height: '100%',
           videoId: cleanId,
@@ -89,27 +101,76 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
           },
           events: {
             onReady: () => {
+              if (this.isDestroyed) {
+                try {
+                  playerInstance.destroy();
+                } catch {
+                  // ignore cleanup errors
+                }
+                resolve();
+                return;
+              }
               this.isReady = true;
               this.startStateTracking();
               this.emit('READY', this.getPlaybackState());
               resolve();
             },
             onStateChange: (event) => {
+              if (this.isDestroyed) return;
               this.handleStateChange(event.data);
             },
             onError: (err) => {
+              if (this.isDestroyed) return;
               console.warn('[Syncora] YouTube Player error:', err.data);
               this.emit('ERROR', this.getPlaybackState());
             },
             onPlaybackRateChange: () => {
+              if (this.isDestroyed) return;
               this.emit('RATE_CHANGE', this.getPlaybackState());
             },
           },
         });
+        this.player = playerInstance;
       } catch (err) {
         reject(err);
       }
     });
+  }
+
+  private clearAutoplayCheck() {
+    if (this.autoplayCheckTimer) {
+      clearTimeout(this.autoplayCheckTimer);
+      this.autoplayCheckTimer = null;
+    }
+  }
+
+  private scheduleAutoplayCheck(didMuteFallback = false) {
+    this.clearAutoplayCheck();
+    this.autoplayCheckTimer = setTimeout(() => {
+      if (this.isDestroyed || !this.player || !this.isReady || !this.wantPlaying) {
+        return;
+      }
+
+      try {
+        const state = this.player.getPlayerState();
+        if (state === YTPlayerState.PLAYING || state === YTPlayerState.BUFFERING) {
+          return;
+        }
+
+        if (!didMuteFallback && !this.player.isMuted()) {
+          // Browser blocked unmuted autoplay; fall back to muted autoplay so synced playback starts
+          this.player.mute();
+          this.player.playVideo();
+          this.emit('AUTOPLAY_MUTED', this.getPlaybackState());
+          this.scheduleAutoplayCheck(true);
+        } else {
+          // Even muted autoplay was blocked; require explicit user interaction
+          this.emit('AUTOPLAY_BLOCKED', this.getPlaybackState());
+        }
+      } catch {
+        // Ignore transient player access errors
+      }
+    }, 800);
   }
 
   private handleStateChange(state: YTPlayerState) {
@@ -117,6 +178,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
 
     switch (state) {
       case YTPlayerState.PLAYING:
+        this.clearAutoplayCheck();
         this.emit('PLAY', currentState);
         break;
       case YTPlayerState.PAUSED:
@@ -126,6 +188,8 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
         this.emit('BUFFERING', currentState);
         break;
       case YTPlayerState.ENDED:
+        this.wantPlaying = false;
+        this.clearAutoplayCheck();
         this.emit('ENDED', currentState);
         break;
     }
@@ -133,29 +197,31 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
 
   private startStateTracking() {
     if (this.updateInterval) clearInterval(this.updateInterval);
-    // Poll player metrics every 250ms for smooth progress bar and drift tracking
     this.updateInterval = setInterval(() => {
       if (this.isReady && this.player) {
-        // We emit periodic time check if playing
         const state = this.getPlaybackState();
         if (state.isPlaying) {
-          // Listeners can monitor continuous state
+          // Listeners monitor continuous state
         }
       }
     }, 250);
   }
 
   async play(): Promise<void> {
-    if (!this.player || !this.isReady) return;
+    if (!this.player || !this.isReady || this.isDestroyed) return;
+    this.wantPlaying = true;
     try {
       this.player.playVideo();
+      this.scheduleAutoplayCheck(false);
     } catch (err) {
       console.warn('[Syncora] playVideo error:', err);
     }
   }
 
   async pause(): Promise<void> {
-    if (!this.player || !this.isReady) return;
+    if (!this.player || !this.isReady || this.isDestroyed) return;
+    this.wantPlaying = false;
+    this.clearAutoplayCheck();
     try {
       this.player.pauseVideo();
     } catch (err) {
@@ -164,10 +230,13 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
   }
 
   async seekTo(seconds: number): Promise<void> {
-    if (!this.player || !this.isReady) return;
+    if (!this.player || !this.isReady || this.isDestroyed) return;
     try {
+      this.pendingSeekTarget = seconds;
+      this.pendingSeekAt = Date.now();
       this.player.seekTo(seconds, true);
-      this.emit('SEEKED', this.getPlaybackState());
+      const snapshot = this.getPlaybackState();
+      this.emit('SEEKED', { ...snapshot, currentTime: seconds });
     } catch (err) {
       console.warn('[Syncora] seekTo error:', err);
     }
@@ -211,7 +280,20 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
 
     try {
       const playerState = this.player.getPlayerState();
-      const currentTime = this.player.getCurrentTime() || 0;
+      const rawCurrentTime = this.player.getCurrentTime() || 0;
+      let currentTime = rawCurrentTime;
+
+      if (this.pendingSeekTarget !== null) {
+        if (
+          Date.now() - this.pendingSeekAt < 800 &&
+          Math.abs(rawCurrentTime - this.pendingSeekTarget) > 1.5
+        ) {
+          currentTime = this.pendingSeekTarget;
+        } else {
+          this.pendingSeekTarget = null;
+        }
+      }
+
       const duration = this.player.getDuration() || 0;
       const loadedFraction = this.player.getVideoLoadedFraction() || 0;
       const playbackRate = this.player.getPlaybackRate() || 1.0;
@@ -248,6 +330,10 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
   }
 
   destroy(): void {
+    this.isDestroyed = true;
+    this.wantPlaying = false;
+    this.clearAutoplayCheck();
+
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;

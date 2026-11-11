@@ -23,7 +23,9 @@ export type PlayerEventType =
   | 'READY'
   | 'ENDED'
   | 'ERROR'
-  | 'RATE_CHANGE';
+  | 'RATE_CHANGE'
+  | 'AUTOPLAY_MUTED'
+  | 'AUTOPLAY_BLOCKED';
 
 export type PlayerEventHandler = (state: PlaybackState) => void;
 

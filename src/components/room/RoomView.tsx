@@ -3,43 +3,65 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
-  Sparkles,
   Tv,
   ArrowLeft,
   Users2,
+  Film,
+  AlertTriangle,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { useSession } from '@/hooks/useSession';
+import { useCall } from '@/hooks/useCall';
 import { RoomHeader } from './RoomHeader';
 import { ChangeVideoModal } from './ChangeVideoModal';
+import { VoiceCallBar } from '@/components/call/VoiceCallBar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { UniversalPlayer } from '@/components/player/UniversalPlayer';
 import { ChatContainer } from '@/components/chat/ChatContainer';
+import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
 
 interface RoomViewProps {
   roomCode: string;
   initialVideoId?: string;
+  initialTitle?: string;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
   roomCode,
   initialVideoId,
+  initialTitle,
 }) => {
   const { user } = useSession();
   const {
     room,
     isHost,
+    members,
     duoStatus,
+    presenceList,
     hostGraceSecondsLeft,
     isLoading,
     error,
+    realtimeError,
     updateVideo,
+    persistPlaybackSnapshot,
+    applyRemoteVideo,
     channel,
-  } = useRoom(roomCode);
+  } = useRoom(roomCode, initialTitle);
 
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
   const hasLoadedInitialVideo = useRef(false);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const voiceCall = useCall({
+    roomId: room?.id,
+    user,
+    presenceList,
+    members,
+    isRoomReady: Boolean(room && !isLoading && !error),
+    audioRef: voiceAudioRef,
+  });
 
   // If initial video was provided in query params and room has none, update it
   useEffect(() => {
@@ -52,10 +74,14 @@ export const RoomView: React.FC<RoomViewProps> = ({
   // Loading Screen
   if (isLoading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[#090a0f] text-neutral-300">
-        <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <h3 className="text-base font-semibold text-white">Connecting to Watch Party...</h3>
-        <p className="text-xs text-neutral-500 mt-1">Preparing room & synchronizing presence</p>
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0E281F] text-[#F7F4EC] px-4">
+        <div className="w-9 h-9 border-2 border-[#E8DDC5]/20 border-t-[#9670FF] rounded-full animate-spin mb-4" />
+        <h2 className="font-serif text-2xl font-medium tracking-tight text-[#F7F4EC]">
+          Entering Screening Room
+        </h2>
+        <p className="text-xs font-mono uppercase tracking-[0.14em] text-[#CDBF9F]/75 mt-1.5">
+          Synchronizing presence &amp; playback state
+        </p>
       </div>
     );
   }
@@ -63,20 +89,27 @@ export const RoomView: React.FC<RoomViewProps> = ({
   // Error Screen
   if (error || !room) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[#090a0f] p-4 text-center">
-        <Card className="max-w-md w-full p-6 text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
-            <Tv className="w-6 h-6" />
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0E281F] p-4 text-center">
+        <Card glow tone="sand" className="max-w-md w-full p-7 text-center space-y-5">
+          <div className="w-11 h-11 rounded-xl bg-[#FDECEC] border border-[#DC2626]/25 text-[#B91C1C] flex items-center justify-center mx-auto">
+            <Tv className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">Room Unavailable</h3>
-            <p className="text-xs text-neutral-400 mt-1">
-              {error || 'The requested watch room could not be loaded.'}
+            <h2 className="font-serif text-2xl font-semibold text-[#102B23]">
+              Screening Room Unavailable
+            </h2>
+            <p className="text-xs text-[#173D30]/75 mt-1.5 leading-relaxed">
+              {error || 'The requested watch room could not be loaded or is no longer active.'}
             </p>
           </div>
-          <Link href="/">
-            <Button variant="primary" size="md" className="w-full" leftIcon={<ArrowLeft className="w-4 h-4" />}>
-              Back to Home
+          <Link href="/" className="block">
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full"
+              leftIcon={<ArrowLeft className="w-4 h-4" />}
+            >
+              Return to Lounge
             </Button>
           </Link>
         </Card>
@@ -84,90 +117,194 @@ export const RoomView: React.FC<RoomViewProps> = ({
     );
   }
 
+  const otherParticipants = presenceList.filter((p) => p.userId !== user.id);
+  const totalOnline = 1 + otherParticipants.length;
+  const hostName = isHost
+    ? user.username
+    : presenceList.find((p) => p.userId === room.hostId)?.username ||
+      duoStatus.partner?.username ||
+      'Host';
+  const partnerLabel =
+    otherParticipants.length === 0
+      ? undefined
+      : otherParticipants.length === 1
+      ? otherParticipants[0].username
+      : `${otherParticipants.length} viewers`;
+
+  const sharedVoiceBarProps = {
+    status: voiceCall.status,
+    isInCall: voiceCall.isInCall,
+    isLeaving: voiceCall.isLeaving,
+    isCallFull: voiceCall.isCallFull,
+    isMuted: voiceCall.isMuted,
+    isAudioBlocked: voiceCall.isAudioBlocked,
+    iceMode: voiceCall.iceMode,
+    connectionMode: voiceCall.connectionMode,
+    error: voiceCall.error,
+    participants: voiceCall.participants,
+    incomingCaller: voiceCall.incomingCaller,
+    onJoin: () => {
+      void voiceCall.joinCall();
+    },
+    onLeave: () => {
+      void voiceCall.leaveCall();
+    },
+    onToggleMute: voiceCall.toggleMute,
+    onUnlockAudio: () => {
+      void voiceCall.unlockRemoteAudio();
+    },
+    onClearError: voiceCall.clearError,
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] bg-[#090a0f] overflow-hidden">
-      {/* Dynamic Room Header */}
+    <div className="w-full h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] shrink-0 flex flex-col bg-[#091B15] overflow-hidden overscroll-none">
+      {/* Persistent Remote Voice Audio Sink (independent of video player lifecycle) */}
+      <audio ref={voiceAudioRef} autoPlay playsInline className="hidden" aria-hidden="true" />
+
+      {/* Pinned Room Header */}
       <RoomHeader
         room={room}
         isHost={isHost}
         duoStatus={duoStatus}
+        presenceList={presenceList}
         hostGraceSecondsLeft={hostGraceSecondsLeft}
         onChangeVideoClick={() => setIsChangeVideoOpen(true)}
+        isChatOpen={isChatOpen}
+        onToggleChat={() => setIsChatOpen(true)}
+        voiceCall={{
+          status: voiceCall.status,
+          isInCall: voiceCall.isInCall,
+          isLeaving: voiceCall.isLeaving,
+          isCallFull: voiceCall.isCallFull,
+          isMuted: voiceCall.isMuted,
+          isLocalSpeaking: voiceCall.isLocalSpeaking,
+          isPeerSpeaking: voiceCall.isPeerSpeaking,
+          incomingCaller: voiceCall.incomingCaller,
+          participantCount: voiceCall.participants.length,
+          onJoinCall: () => {
+            void voiceCall.joinCall();
+          },
+          onLeaveCall: () => voiceCall.leaveCall(),
+          onToggleMute: voiceCall.toggleMute,
+        }}
       />
 
-      {/* Main Watch Area: Side-by-Side Theater Mode on Desktop, Stacked on Mobile */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left Column: Video Theater Container (70% width on Desktop) */}
-        <div className="flex-1 flex flex-col bg-black/60 p-3 sm:p-4 lg:p-6 overflow-y-auto">
-          <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
-            {/* 16:9 Video Frame */}
+      {/* Realtime Private Channel Authorization Notice */}
+      {realtimeError && (
+        <div className="shrink-0 bg-[#292214] border-b border-[#E9B872]/30 px-3 sm:px-6 py-2 flex items-center gap-2 text-xs text-[#F0C987]">
+          <AlertTriangle className="w-4 h-4 text-[#E9B872] shrink-0" />
+          <span>{realtimeError}</span>
+        </div>
+      )}
+
+      {/* Mobile / Tablet (and Collapsed-Chat Desktop) Voice Status Banner */}
+      <VoiceCallBar
+        variant="banner"
+        {...sharedVoiceBarProps}
+        className={isChatOpen ? 'lg:hidden' : ''}
+      />
+
+      {/* Main Theater Split: Full-Stage Video Centerpiece + Independently Scrollable Chat Lounge */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+        {/* Left/Top Stage: Video Centerpiece */}
+        <div className="shrink-0 lg:shrink lg:flex-1 lg:min-w-0 lg:min-h-0 flex flex-col bg-[#091B15] px-3 pt-2.5 pb-2 sm:px-5 sm:pt-3.5 sm:pb-2.5 lg:p-3">
+          <div className="w-full max-w-[calc(36dvh*16/9)] sm:max-w-[calc(40dvh*16/9)] lg:max-w-none lg:flex-1 lg:min-h-0 mx-auto flex flex-col">
+            {/* Screening Frame (16:9 on mobile/tablet, full available theater space on lg+) */}
             {room.videoUrl ? (
               <UniversalPlayer
                 videoUrl={room.videoUrl}
                 videoType={room.videoType}
                 roomId={room.id}
                 isHost={isHost}
-                hostName={isHost ? user.username : (duoStatus.partner?.username || 'Host')}
+                hostName={hostName}
                 channel={channel}
+                initialPlayback={{
+                  position: room.currentPosition,
+                  isPlaying: room.isPlaying,
+                  lastSyncedAt: room.lastSyncedAt,
+                }}
+                onPersistSnapshot={persistPlaybackSnapshot}
+                onVideoMismatch={applyRemoteVideo}
+                className="lg:aspect-auto lg:flex-1 lg:min-h-0"
               />
             ) : (
-              <div className="relative w-full aspect-video bg-neutral-950 rounded-2xl border border-neutral-800/80 overflow-hidden shadow-2xl flex flex-col items-center justify-center text-center group">
-                <div className="flex flex-col items-center max-w-md p-6">
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4 animate-pulse">
-                    <Tv className="w-8 h-8" />
+              <div className="relative w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-[#0D251C] rounded-xl border border-[#E8DDC5]/16 overflow-hidden shadow-[0_24px_70px_rgba(0,0,0,0.55)] flex flex-col items-center justify-center text-center p-4 sm:p-6">
+                {/* Architectural Corner Aspect Guides */}
+                <span className="absolute top-3 left-3 w-3 h-3 border-t border-l border-[#E8DDC5]/30 pointer-events-none" />
+                <span className="absolute top-3 right-3 w-3 h-3 border-t border-r border-[#E8DDC5]/30 pointer-events-none" />
+                <span className="absolute bottom-3 left-3 w-3 h-3 border-b border-l border-[#E8DDC5]/30 pointer-events-none" />
+                <span className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-[#E8DDC5]/30 pointer-events-none" />
+
+                <div className="flex flex-col items-center max-w-md">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#9670FF]/14 border border-[#9670FF]/55 flex items-center justify-center text-[#B397FF] mb-3 sm:mb-4">
+                    <Film className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <h3 className="text-lg font-bold text-white">No Video Loaded Yet</h3>
-                  <p className="text-xs text-neutral-400 mt-2 max-w-sm">
+                  <h3 className="font-serif text-xl sm:text-3xl font-medium text-[#F7F4EC] tracking-tight">
+                    Screening Room Ready
+                  </h3>
+                  <p className="text-xs sm:text-sm text-[#CDBF9F] mt-1.5 sm:mt-2 max-w-sm leading-relaxed">
                     {isHost
-                      ? 'As host, choose a YouTube video, direct video URL, or upload a video clip up to 50MB to start watching.'
-                      : 'Waiting for the host to select a video...'}
+                      ? 'Choose a YouTube link, direct stream URL, or personal upload up to 50MB to start watching together.'
+                      : 'Waiting for the host to load a video into the screening frame...'}
                   </p>
                   {isHost && (
                     <Button
                       variant="primary"
                       size="sm"
-                      className="mt-4"
+                      className="mt-4 sm:mt-5"
                       onClick={() => setIsChangeVideoOpen(true)}
-                      leftIcon={<Tv className="w-4 h-4" />}
+                      leftIcon={<Tv className="w-3.5 h-3.5" />}
                     >
-                      Choose Video
+                      Choose or Upload Video
                     </Button>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Video Status Bar */}
-            <div className="mt-4 flex items-center justify-between text-xs text-neutral-400 px-1">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>
+            {/* Quiet Screening Telemetry Strip */}
+            <div className="mt-2 shrink-0 flex items-center justify-between gap-3 text-[10px] sm:text-[11px] text-[#CDBF9F]/85 px-0.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#9670FF] shrink-0" />
+                <span className="font-mono uppercase tracking-[0.12em] truncate">
                   {room.videoUrl
                     ? room.videoType === 'youtube'
-                      ? 'Playing YouTube'
-                      : 'Playing Personal Video'
-                    : 'Duo Watch Room Ready'}
+                      ? 'YouTube · Synced'
+                      : 'Personal Stream · Synced'
+                    : 'Awaiting Source'}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-neutral-500">
-                <Users2 className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-1.5 text-[#CDBF9F] shrink-0">
+                <Users2 className="w-3.5 h-3.5 text-[#E8DDC5]/75" />
                 <span>
-                  {duoStatus.isPartnerConnected
-                    ? `Watching with ${duoStatus.partner?.username}`
-                    : '1 viewer online'}
+                  {otherParticipants.length > 0
+                    ? `${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} in room · Watching with ${otherParticipants
+                        .map((p) => p.username)
+                        .join(', ')}`
+                    : `1/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} viewer in lounge`}
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Realtime Persistent Live Duo Chat */}
-        <ChatContainer
-          roomId={room.id}
-          user={user}
-          partnerName={duoStatus.partner?.username}
-          channel={channel}
-        />
+        {/* Right/Bottom Lounge: Independently Scrollable Persistent Realtime Chat */}
+        {isChatOpen && (
+          <ChatContainer
+            roomId={room.id}
+            user={user}
+            partnerName={partnerLabel}
+            channel={channel}
+            onCollapse={() => setIsChatOpen(false)}
+            voiceSection={
+              <VoiceCallBar
+                variant="sidebar"
+                {...sharedVoiceBarProps}
+                className="hidden lg:block"
+              />
+            }
+          />
+        )}
       </div>
 
       {/* Change Video Modal */}

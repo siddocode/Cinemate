@@ -14,35 +14,34 @@ export const Badge: React.FC<BadgeProps> = ({
   ...props
 }) => {
   const variants = {
-    default: 'bg-neutral-800 text-neutral-300 border-neutral-700',
-    success: 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60',
-    warning: 'bg-amber-950/70 text-amber-300 border-amber-800/60',
-    danger: 'bg-rose-950/70 text-rose-300 border-rose-800/60',
-    info: 'bg-sky-950/70 text-sky-300 border-sky-800/60',
-    purple: 'bg-purple-950/70 text-purple-300 border-purple-800/60',
+    default: 'bg-[#102B23] text-[#CDBF9F] border-[#E8DDC5]/18',
+    success: 'bg-[#133528] text-[#9FE2BF] border-[#7AD3A8]/30',
+    warning: 'bg-[#292214] text-[#F0C987] border-[#E9B872]/30',
+    danger: 'bg-[#331B1A] text-[#F2B8B2] border-[#E87A70]/35',
+    info: 'bg-[#173D30] text-[#E8DDC5] border-[#E8DDC5]/25',
+    purple: 'bg-[#9670FF]/12 text-[#C9B3FF] border-[#9670FF]/35',
   };
 
   const dotColors = {
-    default: 'bg-neutral-400',
-    success: 'bg-emerald-400 animate-pulse',
-    warning: 'bg-amber-400 animate-pulse',
-    danger: 'bg-rose-400',
-    info: 'bg-sky-400',
-    purple: 'bg-purple-400 animate-pulse',
+    default: 'bg-[#CDBF9F]',
+    success: 'bg-[#7AD3A8]',
+    warning: 'bg-[#E9B872]',
+    danger: 'bg-[#E87A70]',
+    info: 'bg-[#E8DDC5]',
+    purple: 'bg-[#9670FF]',
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border tracking-wide',
+        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border tracking-wide',
         variants[variant],
         className
       )}
       {...props}
     >
-      {dot && <span className={cn('w-1.5 h-1.5 rounded-full', dotColors[variant])} />}
+      {dot && <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColors[variant])} />}
       {children}
     </span>
   );
 };
-

@@ -8,6 +8,22 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  const pathname = request.nextUrl.pathname;
+
+  // Skip Next.js internal static assets and favicon
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.includes('.') ||
+    pathname === '/favicon.ico'
+  ) {
+    return supabaseResponse;
+  }
+
+  // Allow cron or internal webhook api routes to pass without browser auth redirection
+  if (pathname.startsWith('/api/cron')) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient<Database>(
     SUPABASE_URL || 'https://placeholder.supabase.co',
     SUPABASE_PUBLISHABLE_KEY || 'placeholder-publishable-key',
@@ -31,13 +47,52 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh auth token if Supabase auth is in use
+  // Authenticate user via Supabase Auth server (validates & refreshes session cookie)
+  let user = null;
   if (
     SUPABASE_URL &&
     SUPABASE_PUBLISHABLE_KEY &&
     !SUPABASE_URL.includes('placeholder')
   ) {
-    await supabase.auth.getUser();
+    try {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    } catch {
+      user = null;
+    }
+  }
+
+  const isAuthRoute =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/auth');
+
+  const isCallbackRoute = pathname === '/auth/callback';
+  const isApiRoute = pathname.startsWith('/api/');
+  const isAuthenticated = Boolean(user && !user.is_anonymous);
+
+  // 1a. Unauthenticated API calls receive JSON 401 rather than an HTML login redirect
+  if (!isAuthenticated && isApiRoute) {
+    return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+  }
+
+  // 1b. Unauthenticated users trying to access protected pages -> redirect to /login
+  if (!isAuthenticated && !isAuthRoute) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/login';
+    if (pathname !== '/') {
+      redirectUrl.searchParams.set('redirect', pathname);
+    }
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // 2. Authenticated users visiting login/register/auth -> redirect to destination or home
+  if (isAuthenticated && isAuthRoute && !isCallbackRoute) {
+    const redirectParam = request.nextUrl.searchParams.get('redirect');
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = redirectParam && redirectParam.startsWith('/') ? redirectParam : '/';
+    redirectUrl.searchParams.delete('redirect');
+    return NextResponse.redirect(redirectUrl);
   }
 
   return supabaseResponse;

@@ -9,26 +9,49 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   helperText?: string;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
+  tone?: 'sand' | 'dark';
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, helperText, leftIcon, rightIcon, id, ...props }, ref) => {
+  (
+    {
+      className,
+      label,
+      error,
+      helperText,
+      leftIcon,
+      rightIcon,
+      tone = 'sand',
+      id,
+      ...props
+    },
+    ref
+  ) => {
     const generatedId = React.useId();
     const inputId = id || generatedId;
+    const isSand = tone === 'sand';
 
     return (
       <div className="w-full space-y-1.5 text-left">
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-xs font-medium text-neutral-300 uppercase tracking-wider"
+            className={cn(
+              'block text-[11px] font-semibold uppercase tracking-[0.12em]',
+              isSand ? 'text-[#173D30]/80' : 'text-[#CDBF9F]'
+            )}
           >
             {label}
           </label>
         )}
         <div className="relative flex items-center">
           {leftIcon && (
-            <div className="absolute left-3.5 flex items-center pointer-events-none text-neutral-400">
+            <div
+              className={cn(
+                'absolute left-3.5 flex items-center pointer-events-none',
+                isSand ? 'text-[#173D30]/55' : 'text-[#CDBF9F]/70'
+              )}
+            >
               {leftIcon}
             </div>
           )}
@@ -36,25 +59,42 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             ref={ref}
             className={cn(
-              'w-full bg-neutral-900/90 text-neutral-100 placeholder-neutral-500 text-sm rounded-xl border border-neutral-700/80 px-4 py-2.5 transition-all duration-150',
-              'focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500',
+              'w-full text-sm rounded-xl border px-3.5 py-2.5 transition-colors duration-150',
+              'focus:outline-none focus:border-[#7235A8] focus:ring-2 focus:ring-[#9670FF]/25',
               'disabled:opacity-50 disabled:cursor-not-allowed',
+              isSand
+                ? 'bg-[#F7F4EC] text-[#102B23] placeholder-[#173D30]/45 border-[#173D30]/22'
+                : 'bg-[#102B23] text-[#F7F4EC] placeholder-[#CDBF9F]/45 border-[#E8DDC5]/20',
               leftIcon && 'pl-10',
               rightIcon && 'pr-10',
-              error && 'border-rose-500 focus:border-rose-500 focus:ring-rose-500',
+              error &&
+                (isSand
+                  ? 'border-[#B91C1C] focus:border-[#B91C1C] focus:ring-[#B91C1C]/20'
+                  : 'border-[#E87A70] focus:border-[#E87A70] focus:ring-[#E87A70]/40'),
               className
             )}
             {...props}
           />
           {rightIcon && (
-            <div className="absolute right-3.5 flex items-center text-neutral-400">
+            <div
+              className={cn(
+                'absolute right-3.5 flex items-center',
+                isSand ? 'text-[#173D30]/55' : 'text-[#CDBF9F]/70'
+              )}
+            >
               {rightIcon}
             </div>
           )}
         </div>
-        {error && <p className="text-xs text-rose-400 mt-1">{error}</p>}
+        {error && (
+          <p className={cn('text-xs mt-1 font-medium', isSand ? 'text-[#991B1B]' : 'text-[#F2B8B2]')}>
+            {error}
+          </p>
+        )}
         {helperText && !error && (
-          <p className="text-xs text-neutral-400 mt-1">{helperText}</p>
+          <p className={cn('text-xs mt-1', isSand ? 'text-[#173D30]/65' : 'text-[#CDBF9F]/75')}>
+            {helperText}
+          </p>
         )}
       </div>
     );
@@ -62,4 +102,3 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 );
 
 Input.displayName = 'Input';
-

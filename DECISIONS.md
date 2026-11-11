@@ -112,4 +112,18 @@
   - Privileged administrative access strictly uses `SUPABASE_SECRET_KEY` (configured in `src/lib/supabase/server.ts` via `getSupabaseAdminClient()`), which is never prefixed with `NEXT_PUBLIC_` and never exported to browser bundles.
   - Backward compatibility: Fallbacks to `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are maintained so legacy projects continue to function seamlessly.
 
+---
+
+## ADR-010: Two-Person P2P WebRTC Voice Calling over Private Realtime Outboxes & Server-Side Cloudflare TURN
+
+- **Context**: Syncora needed low-latency voice calling while watching without adding container servers, third-party SFUs, or exposing TURN secrets to the browser, while preserving the 4-participant watch-room cap and hardening Supabase Realtime against unauthenticated access or sender spoofing.
+- **Decisions**:
+  1. **2-Person Voice Cap (`MAX_CALL_PARTICIPANTS = 2`) within 4-Viewer Rooms**: Voice calls use direct 1:1 WebRTC (`RTCPeerConnection`) rather than a multi-party mesh or external SFU. Concurrency is enforced atomically in PostgreSQL (`join_room_call` with `pg_advisory_xact_lock` + 60s heartbeat expiry).
+  2. **Anti-Spoofing Per-Caller Private Outbox Topics**: Because Supabase Realtime Broadcast does not stamp a verified sender ID in payloads, each caller publishes strictly to `call:{roomId}:{selfUserId}` enforced by `realtime.messages` RLS (`auth.uid() = senderId` + active membership + active call slot). Non-callers in the 4-person room cannot subscribe to or inject SDP/ICE.
+  3. **Configurable Cloudflare TURN with STUN-Only Dev Mode**: `turnService.ts` runs strictly server-side behind `POST /api/rooms/[id]/call/ice-servers` (with Postgres rate limiting in `call_credential_requests`). When `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` are omitted, local development uses STUN-only (`isProductionReady: false`); production deployments generate short-lived Cloudflare TURN credentials (`turns:` on port 443 for strict mobile CGNAT/Jio compatibility).
+- **Consequences**:
+  - Zero new runtime npm dependencies and 100% Vercel serverless compatibility.
+  - Watch-party playback, chat, and authentication remain completely decoupled from voice calls.
+  - STUN-only development works without third-party keys, while production mobile/NAT reliability requires configuring Cloudflare TURN keys before go-live.
+
 

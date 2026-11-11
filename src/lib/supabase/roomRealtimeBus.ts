@@ -1,0 +1,151 @@
+import { RealtimeChannel } from '@supabase/supabase-js';
+
+export interface RealtimeChatMessageRow {
+  id: string;
+  room_id: string;
+  user_id: string;
+  content: string;
+  type: 'chat' | 'system';
+  created_at: string;
+}
+
+export interface RealtimeTypingPayload {
+  userId: string;
+  username: string;
+  isTyping: boolean;
+}
+
+export interface RealtimeCallSlotRow {
+  room_id: string;
+  user_id: string;
+  call_session_id: string;
+  joined_at: string;
+  last_heartbeat_at: string;
+}
+
+export interface RealtimeCallSlotChange {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  newRow?: RealtimeCallSlotRow;
+  oldRow?: Partial<RealtimeCallSlotRow>;
+}
+
+type ChatMessageListener = (row: RealtimeChatMessageRow) => void;
+type TypingListener = (payload: RealtimeTypingPayload) => void;
+type CallSlotListener = (change: RealtimeCallSlotChange) => void;
+
+const chatMessageListeners = new Map<string, Set<ChatMessageListener>>();
+const typingListeners = new Map<string, Set<TypingListener>>();
+const callSlotListeners = new Map<string, Set<CallSlotListener>>();
+const attachedTypingChannels = new WeakSet<RealtimeChannel>();
+
+/**
+ * Registers a listener for `chat_messages` INSERT events received via the unified room channel.
+ */
+export function subscribeToRoomChatInserts(
+  roomId: string,
+  listener: ChatMessageListener
+): () => void {
+  let set = chatMessageListeners.get(roomId);
+  if (!set) {
+    set = new Set();
+    chatMessageListeners.set(roomId, set);
+  }
+  set.add(listener);
+
+  return () => {
+    const current = chatMessageListeners.get(roomId);
+    if (current) {
+      current.delete(listener);
+      if (current.size === 0) {
+        chatMessageListeners.delete(roomId);
+      }
+    }
+  };
+}
+
+/**
+ * Dispatches a `chat_messages` INSERT payload from the unified room channel to listeners.
+ */
+export function emitRoomChatInsert(roomId: string, row: RealtimeChatMessageRow): void {
+  const listeners = chatMessageListeners.get(roomId);
+  if (!listeners) return;
+  listeners.forEach((listener) => listener(row));
+}
+
+/**
+ * Registers a typing broadcast listener for a room, attaching the broadcast handler once per channel.
+ */
+export function subscribeToRoomTyping(
+  roomId: string,
+  channel: RealtimeChannel | null,
+  listener: TypingListener
+): () => void {
+  let set = typingListeners.get(roomId);
+  if (!set) {
+    set = new Set();
+    typingListeners.set(roomId, set);
+  }
+  set.add(listener);
+
+  if (channel && !attachedTypingChannels.has(channel)) {
+    attachedTypingChannels.add(channel);
+    channel.on(
+      'broadcast',
+      { event: 'CHAT_TYPING' },
+      (msg: { payload: RealtimeTypingPayload }) => {
+        if (msg?.payload) {
+          const current = typingListeners.get(roomId);
+          current?.forEach((l) => l(msg.payload));
+        }
+      }
+    );
+  }
+
+  return () => {
+    const current = typingListeners.get(roomId);
+    if (current) {
+      current.delete(listener);
+      if (current.size === 0) {
+        typingListeners.delete(roomId);
+      }
+    }
+  };
+}
+
+/**
+ * Registers a listener for `room_call_participants` postgres_changes received via the unified room channel.
+ */
+export function subscribeToRoomCallSlots(
+  roomId: string,
+  listener: CallSlotListener
+): () => void {
+  let set = callSlotListeners.get(roomId);
+  if (!set) {
+    set = new Set();
+    callSlotListeners.set(roomId, set);
+  }
+  set.add(listener);
+
+  return () => {
+    const current = callSlotListeners.get(roomId);
+    if (current) {
+      current.delete(listener);
+      if (current.size === 0) {
+        callSlotListeners.delete(roomId);
+      }
+    }
+  };
+}
+
+/**
+ * Dispatches a `room_call_participants` change payload from the unified room channel to listeners.
+ */
+export function emitRoomCallSlotChange(
+  roomId: string,
+  change: RealtimeCallSlotChange
+): void {
+  const listeners = callSlotListeners.get(roomId);
+  if (!listeners) return;
+  listeners.forEach((listener) => listener(change));
+}
+

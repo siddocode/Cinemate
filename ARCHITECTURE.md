@@ -246,3 +246,40 @@ sequenceDiagram
 - **Authentication**:
   - Supabase Anonymous Sign-In enabled to support zero-friction guest joins while maintaining cryptographically signed JWT sessions for RLS.
   - Optional Email / OAuth sign-in to claim and retain permanent rooms.
+
+---
+
+## 7. Two-Person Voice Calling Architecture (Phase 10)
+
+Syncora supports voice-only 1:1 WebRTC calls inside watch rooms (`MAX_CALL_PARTICIPANTS = 2`), while watch-room capacity remains `MAX_ROOM_PARTICIPANTS = 4`.
+
+```mermaid
+sequenceDiagram
+    participant CallerA as Caller A (Browser)
+    participant SupabaseDB as PostgreSQL (RLS + Advisory Lock)
+    participant NextAPI as Vercel API (/call/ice-servers)
+    participant Realtime as Private Realtime Outboxes
+    participant CallerB as Caller B (Browser)
+
+    CallerA->>CallerA: getUserMedia({ audio: AEC/NS/AGC, video: false })
+    CallerA->>SupabaseDB: rpc('join_room_call', roomId)
+    Note over SupabaseDB: pg_advisory_xact_lock + 60s TTL prune + MAX 2 cap
+    CallerA->>NextAPI: POST /api/rooms/[id]/call/ice-servers
+    NextAPI-->>CallerA: STUN-only (dev) or Short-Lived Cloudflare TURN
+    CallerA->>Realtime: Subscribe private call:{roomId}:{A} + call:{roomId}:{B}
+    CallerA->>Realtime: media-state ready handshake -> Perfect Negotiation
+    Realtime-->>CallerB: Verified sender via topic RLS (auth.uid() = A)
+    CallerA<-->CallerB: Direct DTLS-SRTP Audio (P2P or Cloudflare TURN)
+```
+
+### 7.1 Server-Side Slot Enforcement & Zero Media Persistence
+- **`public.room_call_participants`**: Stores only `(room_id, user_id, call_session_id, joined_at, last_heartbeat_at)`. Direct browser `INSERT`/`UPDATE`/`DELETE` is disabled; all slot changes execute through `join_room_call`, `heartbeat_room_call`, and `leave_room_call` RPCs (plus `POST /api/rooms/[id]/call/leave` via `navigator.sendBeacon` on `pagehide`).
+- **Zero Persistence**: Audio streams, SDP offers/answers, and ICE candidates are never stored in PostgreSQL or application logs.
+
+### 7.2 Anti-Spoofing Signaling & Validation
+- Every caller publishes only to `call:{roomId}:{selfUserId}` (`INSERT` RLS requires `auth.uid() = selfUserId`, room membership, and an active slot in `room_call_participants`). Only active callers in that room may `SELECT` `call:{roomId}:*`.
+- [`callSignalValidation.ts`](file:///home/sid/Desktop/Cinemate/src/core/call/callSignalValidation.ts) enforces protocol version `1`, `roomId`, `targetUserId`, UUID `callSessionId`, `16 KB` audio-only SDP (rejecting `m=video` and `m=application`), `1 KB` ICE bounds, and a 30/sec sliding-window inbound rate limiter.
+- [`PeerConnectionManager.ts`](file:///home/sid/Desktop/Cinemate/src/core/call/PeerConnectionManager.ts) resolves simultaneous joins using **Perfect Negotiation** (`polite = selfUserId < peerUserId`), buffers early ICE candidates, and runs exponential-backoff ICE restarts on transient drops.
+
+### 7.3 Independent Lifecycle & Non-Obstructive UI
+- [`useCall.ts`](file:///home/sid/Desktop/Cinemate/src/hooks/useCall.ts) and the remote `<audio>` element live in [`RoomView.tsx`](file:///home/sid/Desktop/Cinemate/src/components/room/RoomView.tsx) outside [`UniversalPlayer.tsx`](file:///home/sid/Desktop/Cinemate/src/components/player/UniversalPlayer.tsx), ensuring video source switches, seeks, pauses, and player remounts never interrupt voice calls.

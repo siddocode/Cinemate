@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { extractYouTubeId } from '@/lib/utils/youtube';
 import { storageService } from '@/lib/services/storageService';
+import { bandwidthService, BandwidthMetrics } from '@/lib/services/bandwidthService';
+import { useSession } from '@/hooks/useSession';
 import { VideoSourceType } from '@/core/types/player.types';
-import { Tv, Link as LinkIcon, Upload, Check, AlertCircle } from 'lucide-react';
+import { Tv, Link as LinkIcon, Upload, Check, AlertCircle, ShieldAlert } from 'lucide-react';
 
 interface ChangeVideoModalProps {
   isOpen: boolean;
@@ -24,6 +26,7 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
   currentVideoUrl,
   onSelectVideo,
 }) => {
+  const { user } = useSession();
   const [activeTab, setActiveTab] = useState<VideoSourceType>('youtube');
   const [youtubeInput, setYoutubeInput] = useState(currentVideoUrl);
   const [directUrlInput, setDirectUrlInput] = useState('');
@@ -31,9 +34,17 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
+  const [metrics, setMetrics] = useState<BandwidthMetrics | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      bandwidthService.getMetrics(user.id).then((m) => setMetrics(m));
+    }
+  }, [isOpen, user.id]);
 
   const handleYouTubeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) return;
     setError('');
 
     const trimmed = youtubeInput.trim();
@@ -61,6 +72,7 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
 
   const handleDirectUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) return;
     setError('');
 
     const trimmed = directUrlInput.trim();
@@ -102,6 +114,7 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) return;
     if (!selectedFile) {
       setError('Please select a video file first.');
       return;
@@ -115,7 +128,8 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
       const res = await storageService.uploadVideo(
         selectedFile,
         roomId,
-        (progress) => setUploadProgress(progress)
+        (progress) => setUploadProgress(progress),
+        user.id || 'guest'
       );
 
       if (res.error || !res.url) {
@@ -138,56 +152,63 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Change Video Source"
-      description="Choose YouTube, a direct video link, or upload a video clip."
+      preventClose={isUploading}
+      title="Select Video Source"
+      description="Load a YouTube link, direct streaming URL, or personal clip up to 50MB."
     >
-      <div className="space-y-4">
-        {/* Source Switcher Tabs */}
-        <div className="grid grid-cols-3 p-1 bg-neutral-950 rounded-xl border border-neutral-800 text-xs">
+      <div className="space-y-5">
+        {/* Warm Sand Pill Switcher */}
+        <div className="grid grid-cols-3 p-1 bg-[#DFD2B4] rounded-full text-xs">
           <button
             type="button"
+            disabled={isUploading}
             onClick={() => {
+              if (isUploading) return;
               setActiveTab('youtube');
               setError('');
             }}
-            className={`py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 rounded-full font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
               activeTab === 'youtube'
-                ? 'bg-neutral-800 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white'
+                ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
+                : 'text-[#173D30]/80 hover:text-[#102B23]'
             }`}
           >
-            <Tv className="w-3.5 h-3.5 text-indigo-400" />
+            <Tv className="w-3.5 h-3.5" />
             YouTube
           </button>
           <button
             type="button"
+            disabled={isUploading}
             onClick={() => {
+              if (isUploading) return;
               setActiveTab('url');
               setError('');
             }}
-            className={`py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 rounded-full font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
               activeTab === 'url'
-                ? 'bg-neutral-800 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white'
+                ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
+                : 'text-[#173D30]/80 hover:text-[#102B23]'
             }`}
           >
-            <LinkIcon className="w-3.5 h-3.5 text-purple-400" />
+            <LinkIcon className="w-3.5 h-3.5" />
             Direct URL
           </button>
           <button
             type="button"
+            disabled={isUploading}
             onClick={() => {
+              if (isUploading) return;
               setActiveTab('upload');
               setError('');
             }}
-            className={`py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`py-2 rounded-full font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
               activeTab === 'upload'
-                ? 'bg-neutral-800 text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white'
+                ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
+                : 'text-[#173D30]/80 hover:text-[#102B23]'
             }`}
           >
-            <Upload className="w-3.5 h-3.5 text-pink-400" />
-            Upload (50MB)
+            <Upload className="w-3.5 h-3.5" />
+            Upload
           </button>
         </div>
 
@@ -201,10 +222,17 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
               onChange={(e) => setYoutubeInput(e.target.value)}
               error={error}
               leftIcon={<Tv className="w-4 h-4" />}
+              disabled={isUploading}
               autoFocus
             />
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              <Button
+                type="button"
+                variant="ghostSand"
+                size="sm"
+                onClick={onClose}
+                disabled={isUploading}
+              >
                 Cancel
               </Button>
               <Button
@@ -212,9 +240,9 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
                 variant="primary"
                 size="sm"
                 isLoading={isUploading}
-                leftIcon={<Check className="w-4 h-4" />}
+                leftIcon={<Check className="w-3.5 h-3.5" />}
               >
-                Watch YouTube
+                {isUploading ? 'Loading Video…' : 'Watch YouTube'}
               </Button>
             </div>
           </form>
@@ -231,10 +259,17 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
               error={error}
               helperText="Paste any publicly accessible direct video streaming link."
               leftIcon={<LinkIcon className="w-4 h-4" />}
+              disabled={isUploading}
               autoFocus
             />
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              <Button
+                type="button"
+                variant="ghostSand"
+                size="sm"
+                onClick={onClose}
+                disabled={isUploading}
+              >
                 Cancel
               </Button>
               <Button
@@ -242,9 +277,9 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
                 variant="primary"
                 size="sm"
                 isLoading={isUploading}
-                leftIcon={<Check className="w-4 h-4" />}
+                leftIcon={<Check className="w-3.5 h-3.5" />}
               >
-                Load Video URL
+                {isUploading ? 'Loading Stream…' : 'Load Video URL'}
               </Button>
             </div>
           </form>
@@ -253,23 +288,57 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
         {/* Tab 3: Upload Video Clip */}
         {activeTab === 'upload' && (
           <form onSubmit={handleUploadSubmit} className="space-y-4">
-            <div className="border-2 border-dashed border-neutral-700 hover:border-indigo-500 rounded-xl p-6 text-center transition-colors cursor-pointer relative bg-neutral-900/50">
+            {metrics?.isHardBlocked && (
+              <div className="flex items-start gap-2.5 text-xs text-[#7F1D1D] bg-[#FDECEC] border border-[#DC2626]/30 p-3.5 rounded-xl">
+                <ShieldAlert className="w-5 h-5 text-[#B91C1C] shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-[#7F1D1D]">
+                    Personal Video Storage Safe Limit Reached
+                  </p>
+                  <p className="text-[#7F1D1D]/85 leading-relaxed">
+                    Monthly storage egress safe ceiling reached (~1.8GB / 2.0GB).
+                    Personal uploads are paused—please use <strong>YouTube</strong> or{' '}
+                    <strong>Direct URL</strong> instead.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!metrics?.isHardBlocked && metrics?.isSoftWarning && (
+              <div className="flex items-start gap-2.5 text-xs text-[#78350F] bg-[#FDF3DC] border border-[#D97706]/30 p-3 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
+                <span>
+                  Monthly storage egress is at ~75% of free tier. YouTube or direct
+                  links are recommended.
+                </span>
+              </div>
+            )}
+
+            <div
+              className={`border border-dashed rounded-xl p-6 text-center transition-colors relative bg-[#F7F4EC] ${
+                metrics?.isHardBlocked
+                  ? 'border-[#173D30]/15 opacity-60 cursor-not-allowed'
+                  : 'border-[#173D30]/30 hover:border-[#7235A8] cursor-pointer'
+              }`}
+            >
               <input
                 type="file"
                 accept="video/mp4,video/webm,video/ogg,video/quicktime"
                 onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                disabled={isUploading}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                disabled={isUploading || Boolean(metrics?.isHardBlocked)}
               />
               <div className="flex flex-col items-center gap-2">
-                <Upload className="w-8 h-8 text-indigo-400" />
-                <span className="text-sm font-medium text-white">
-                  {selectedFile ? selectedFile.name : 'Click or drag video file here'}
+                <div className="w-10 h-10 rounded-xl bg-[#EDE2CA] border border-[#173D30]/15 flex items-center justify-center text-[#7235A8]">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-semibold text-[#102B23] max-w-full truncate px-2">
+                  {selectedFile ? selectedFile.name : 'Click or drop a video clip here'}
                 </span>
-                <span className="text-xs text-neutral-400">
+                <span className="text-xs font-mono text-[#173D30]/70">
                   {selectedFile
-                    ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB selected`
-                    : 'MP4, WebM, or MOV up to 50MB (Supabase Storage limit)'}
+                    ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB ready`
+                    : 'MP4, WebM, or MOV · 50MB max'}
                 </span>
               </div>
             </div>
@@ -277,13 +346,15 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
             {/* Upload Progress Bar */}
             {isUploading && (
               <div className="space-y-1.5">
-                <div className="flex justify-between text-xs text-neutral-300">
+                <div className="flex justify-between text-xs text-[#173D30]/80">
                   <span>Uploading to room storage...</span>
-                  <span>{uploadProgress}%</span>
+                  <span className="font-mono tabular-nums font-semibold text-[#102B23]">
+                    {uploadProgress}%
+                  </span>
                 </div>
-                <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-[#DFD2B4] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-indigo-500 to-pink-500 transition-all duration-300"
+                    className="h-full bg-[#7235A8] transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -291,14 +362,20 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
             )}
 
             {error && (
-              <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-950/40 border border-rose-900/60 p-2.5 rounded-lg">
-                <AlertCircle className="w-4 h-4 shrink-0" />
+              <div className="flex items-start gap-2 text-xs text-[#7F1D1D] bg-[#FDECEC] border border-[#DC2626]/30 p-3 rounded-xl">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#B91C1C]" />
                 <span>{error}</span>
               </div>
             )}
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isUploading}>
+              <Button
+                type="button"
+                variant="ghostSand"
+                size="sm"
+                onClick={onClose}
+                disabled={isUploading}
+              >
                 Cancel
               </Button>
               <Button
@@ -306,10 +383,10 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
                 variant="primary"
                 size="sm"
                 isLoading={isUploading}
-                disabled={!selectedFile}
-                leftIcon={<Upload className="w-4 h-4" />}
+                disabled={!selectedFile || Boolean(metrics?.isHardBlocked)}
+                leftIcon={<Upload className="w-3.5 h-3.5" />}
               >
-                Upload & Play
+                Upload &amp; Play
               </Button>
             </div>
           </form>

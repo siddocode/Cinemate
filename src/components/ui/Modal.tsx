@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils/cn';
 import { X } from 'lucide-react';
 
@@ -11,6 +12,17 @@ export interface ModalProps {
   description?: string;
   children: React.ReactNode;
   className?: string;
+  preventClose?: boolean;
+}
+
+const emptySubscribe = () => () => {};
+
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -20,52 +32,70 @@ export const Modal: React.FC<ModalProps> = ({
   description,
   children,
   className,
+  preventClose = false,
 }) => {
+  const isClient = useIsClient();
+
   useEffect(() => {
+    if (!isOpen || preventClose) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, preventClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !isClient) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/* House-lights dimmed backdrop */}
       <div
-        className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        className="fixed inset-0 bg-[#071611]/82 backdrop-blur-[2px] transition-opacity"
+        onClick={() => {
+          if (!preventClose) onClose();
+        }}
       />
 
-      {/* Modal Dialog Box */}
+      {/* Warm Sand Beige Modal Dialog */}
       <div
         className={cn(
-          'relative w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl p-6 z-10 animate-in fade-in zoom-in-95 duration-150',
+          'relative w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#EDE2CA] text-[#102B23] border border-[#CDBF9F]/70 rounded-2xl shadow-[0_28px_72px_rgba(0,0,0,0.55)] p-5 sm:p-6 z-10 cinema-enter',
           className
         )}
       >
-        <div className="flex items-start justify-between pb-3">
+        <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#173D30]/12">
           <div>
-            {title && <h3 className="text-lg font-semibold text-white">{title}</h3>}
+            {title && (
+              <h3 className="font-serif text-2xl font-semibold tracking-tight text-[#102B23] leading-tight">
+                {title}
+              </h3>
+            )}
             {description && (
-              <p className="text-sm text-neutral-400 mt-0.5">{description}</p>
+              <p className="text-xs text-[#173D30]/75 mt-1 leading-relaxed">{description}</p>
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            disabled={preventClose}
+            aria-label="Close dialog"
+            className="p-1.5 rounded-lg text-[#173D30]/65 hover:text-[#102B23] hover:bg-[#102B23]/8 transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="mt-4">{children}</div>
+        <div className="mt-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
-

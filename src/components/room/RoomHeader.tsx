@@ -1,34 +1,82 @@
 'use client';
 
-import React, { useState } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Copy,
   Check,
   Tv,
   LogOut,
   AlertTriangle,
+  Star,
+  MessageSquare,
+  Mic,
+  MicOff,
+  PhoneCall,
+  PhoneOff,
+  Headphones,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { DuoStatus, Room } from '@/core/types/room.types';
+import { DuoStatus, ParticipantPresence, Room } from '@/core/types/room.types';
+import { CallParticipantState, CallStatus } from '@/core/types/call.types';
+import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
+import { useSession } from '@/hooks/useSession';
+import { favoriteService } from '@/lib/services/favoriteService';
+
+export interface RoomHeaderVoiceProps {
+  status: CallStatus;
+  isInCall: boolean;
+  isLeaving?: boolean;
+  isCallFull: boolean;
+  isMuted: boolean;
+  isLocalSpeaking: boolean;
+  isPeerSpeaking: boolean;
+  incomingCaller: CallParticipantState | null;
+  participantCount: number;
+  onJoinCall: () => void;
+  onLeaveCall: () => Promise<void> | void;
+  onToggleMute: () => void;
+}
 
 interface RoomHeaderProps {
   room: Room;
   isHost: boolean;
   duoStatus: DuoStatus;
+  presenceList?: ParticipantPresence[];
   hostGraceSecondsLeft: number | null;
   onChangeVideoClick: () => void;
+  isChatOpen?: boolean;
+  onToggleChat?: () => void;
+  voiceCall?: RoomHeaderVoiceProps;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
   room,
   isHost,
   duoStatus,
+  presenceList,
   hostGraceSecondsLeft,
   onChangeVideoClick,
+  isChatOpen = true,
+  onToggleChat,
+  voiceCall,
 }) => {
+  const router = useRouter();
+  const { user, isAuthenticated } = useSession();
   const [copied, setCopied] = useState(false);
+  const [isFav, setIsFav] = useState(false);
+  const [isFavLoading, setIsFavLoading] = useState(false);
+  const [isLeavingRoom, setIsLeavingRoom] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && user.id && room.videoUrl) {
+      favoriteService.isFavorite(user.id, room.videoUrl).then((fav) => {
+        setIsFav(fav);
+      });
+    }
+  }, [isAuthenticated, user.id, room.videoUrl]);
 
   const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
@@ -38,103 +86,336 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     }
   };
 
+  const handleLeaveRoom = async () => {
+    if (isLeavingRoom) return;
+    setIsLeavingRoom(true);
+    try {
+      if (voiceCall?.isInCall) {
+        await voiceCall.onLeaveCall();
+      }
+      router.push('/');
+    } catch {
+      setIsLeavingRoom(false);
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!isAuthenticated || !user.id || !room.videoUrl || isFavLoading) return;
+
+    setIsFavLoading(true);
+    try {
+      if (isFav) {
+        await favoriteService.removeFavorite(user.id, room.videoUrl);
+        setIsFav(false);
+      } else {
+        await favoriteService.addFavorite(user.id, {
+          roomCode: room.code,
+          videoId: room.videoUrl,
+          videoTitle: room.title || 'Watch Party Video',
+        });
+        setIsFav(true);
+      }
+    } finally {
+      setIsFavLoading(false);
+    }
+  };
+
   return (
-    <div className="shrink-0 flex flex-col border-b border-neutral-800/80 bg-neutral-950/70 backdrop-blur-md">
+    <div className="shrink-0 flex flex-col border-b border-[#E8DDC5]/12 bg-[#0E281F]">
       {/* Failover Alert Banner if Host Disconnected */}
       {hostGraceSecondsLeft !== null && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
+        <div className="bg-[#292214] border-b border-[#E9B872]/30 px-3 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[#F0C987]">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+            <AlertTriangle className="w-4 h-4 text-[#E9B872] shrink-0" />
             <span>
-              <strong>Host disconnected.</strong> Playback paused. Grace period active:
+              <strong className="font-semibold">Host disconnected.</strong> Playback
+              paused during grace window.
             </span>
           </div>
-          <span className="font-mono font-bold bg-amber-500/20 px-2 py-0.5 rounded text-amber-200">
-            {hostGraceSecondsLeft}s until auto-failover
+          <span className="font-mono text-[11px] font-semibold bg-[#0E281F] border border-[#E9B872]/35 px-2.5 py-0.5 rounded-full text-[#F0C987]">
+            {hostGraceSecondsLeft}s until failover
           </span>
         </div>
       )}
 
-      {/* Main Header Bar */}
-      <div className="h-14 px-4 sm:px-6 flex items-center justify-between gap-3">
-        {/* Left: Room Title & Share Code */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-white max-w-[140px] sm:max-w-xs truncate">
+      {/* Main Screening Header Bar */}
+      <div className="min-h-12 sm:min-h-14 px-3 sm:px-6 py-1.5 sm:py-2 flex items-center justify-between gap-2 sm:gap-4">
+        {/* Left: Room Title, Sand Beige Room Code Pill & Favorite */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <h1 className="font-serif text-base sm:text-xl font-semibold tracking-tight text-[#F7F4EC] max-w-[88px] sm:max-w-[220px] truncate">
               {room.title}
-            </h2>
-            <span className="text-xs font-mono font-bold bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-lg text-indigo-400">
-              {room.code}
-            </span>
+            </h1>
+
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-mono font-semibold bg-[#E8DDC5] hover:bg-[#F7F4EC] px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[#102B23] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              title="Copy room invitation link"
+            >
+              <span>{room.code}</span>
+              {copied ? (
+                <Check className="w-3 h-3 text-[#15803D]" />
+              ) : (
+                <Copy className="w-3 h-3 text-[#173D30]/75" />
+              )}
+            </button>
           </div>
 
           <Button
             variant="outline"
             size="sm"
             onClick={handleCopyLink}
-            className="h-8 text-xs hidden sm:inline-flex"
+            className="h-8 text-xs rounded-full hidden md:inline-flex"
             leftIcon={
               copied ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
               ) : (
                 <Copy className="w-3.5 h-3.5" />
               )
             }
           >
-            {copied ? 'Link Copied!' : 'Copy Invite'}
+            {copied ? 'Copied' : 'Copy Invite'}
           </Button>
-        </div>
 
-        {/* Right: Partner Status, Role Badge & Controls */}
-        <div className="flex items-center gap-2.5">
-          {/* Partner Status Pill */}
-          {duoStatus.isPartnerConnected ? (
-            <Badge variant="success" dot className="text-xs">
-              Partner: {duoStatus.partner?.username || 'Connected'}
-            </Badge>
-          ) : (
+          {/* Favorite Video Toggle */}
+          {room.videoUrl && isAuthenticated && (
             <button
-              onClick={handleCopyLink}
-              className="cursor-pointer transition-transform hover:scale-105"
+              type="button"
+              onClick={handleToggleFavorite}
+              disabled={isFavLoading || isLeavingRoom}
+              className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-full border text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-55 disabled:pointer-events-none ${
+                isFav
+                  ? 'bg-[#292214] border-[#E9B872]/40 text-[#F0C987]'
+                  : 'bg-[#173D30] border-[#E8DDC5]/18 text-[#CDBF9F] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/35'
+              }`}
+              title={isFav ? 'Saved to Favorites' : 'Save to Favorites'}
+              aria-label={isFav ? 'Remove from Favorites' : 'Save to Favorites'}
             >
-              <Badge variant="warning" dot className="text-xs">
-                Waiting for Partner... (Click to Invite)
-              </Badge>
+              {isFavLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Star
+                  className={`w-3.5 h-3.5 ${
+                    isFav ? 'fill-[#E9B872] text-[#E9B872]' : ''
+                  }`}
+                />
+              )}
+              <span className="hidden xl:inline">
+                {isFavLoading ? 'Saving…' : isFav ? 'Saved' : 'Save'}
+              </span>
             </button>
           )}
+        </div>
+
+        {/* Right: Participant Presence, Role & Room Controls */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Active Participants Pill (Supports up to MAX_ROOM_PARTICIPANTS = 4) */}
+          {(() => {
+            const others = presenceList
+              ? presenceList.filter((p) => p.userId !== user.id)
+              : duoStatus.partner
+              ? [duoStatus.partner]
+              : [];
+
+            if (others.length === 0) {
+              return (
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="cursor-pointer transition-opacity hover:opacity-90 shrink-0"
+                  title="Click to copy invite link"
+                >
+                  <Badge variant="warning" dot className="text-[10px] sm:text-[11px] whitespace-nowrap">
+                    <span className="sm:hidden">{copied ? 'Copied' : 'Invite'}</span>
+                    <span className="hidden sm:inline">
+                      {copied ? 'Invite Link Copied' : 'Waiting for Viewers · Invite'}
+                    </span>
+                  </Badge>
+                </button>
+              );
+            }
+
+            const totalOnline = 1 + others.length;
+            const otherNames = others.map((p) => p.username).join(', ');
+            return (
+              <Badge
+                variant="success"
+                dot
+                className="text-[10px] sm:text-[11px] max-w-[125px] sm:max-w-[220px] truncate whitespace-nowrap"
+                title={`Online (${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}): You, ${otherNames}`}
+              >
+                <span className="sm:hidden">
+                  {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} · {others[0]?.username}
+                  {others.length > 1 ? ` +${others.length - 1}` : ''}
+                </span>
+                <span className="hidden sm:inline">
+                  {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} Online · {otherNames}
+                </span>
+              </Badge>
+            );
+          })()}
 
           {/* User Role */}
           <Badge
             variant={isHost ? 'purple' : 'default'}
-            className="text-xs hidden md:inline-flex"
+            dot={isHost}
+            className="text-[11px] hidden lg:inline-flex"
           >
-            {isHost ? '👑 Host' : 'Viewer'}
+            {isHost ? 'Host' : 'Viewer'}
           </Badge>
 
           {/* Host Change Video Button */}
           {isHost && (
             <Button
-              variant="secondary"
+              variant="primary"
               size="sm"
               onClick={onChangeVideoClick}
-              className="h-8 text-xs"
-              leftIcon={<Tv className="w-3.5 h-3.5 text-indigo-400" />}
+              className="h-7 sm:h-8 text-[11px] sm:text-xs px-2.5 sm:px-3 rounded-full"
+              leftIcon={<Tv className="w-3.5 h-3.5" />}
             >
-              Change Video
+              <span className="hidden sm:inline">Video / Upload</span>
+              <span className="sm:hidden">Video</span>
+            </Button>
+          )}
+
+          {/* Voice Call Compact Header Controls */}
+          {voiceCall && (
+            <>
+              {voiceCall.isInCall ? (
+                <div className="flex items-center gap-1 bg-[#133227] border border-[#E8DDC5]/18 rounded-full px-1.5 py-0.5">
+                  <span
+                    className={`w-2 h-2 rounded-full ml-1 shrink-0 ${
+                      voiceCall.isLocalSpeaking || voiceCall.isPeerSpeaking
+                        ? 'bg-[#7AD3A8] animate-pulse shadow-[0_0_8px_#7AD3A8]'
+                        : voiceCall.status === 'reconnecting'
+                        ? 'bg-[#E9B872] animate-pulse'
+                        : 'bg-[#7AD3A8]/70'
+                    }`}
+                    title={`Voice ${voiceCall.participantCount}/2 (${voiceCall.status})`}
+                  />
+                  <span className="hidden xl:inline text-[11px] font-mono text-[#E8DDC5] px-1 whitespace-nowrap">
+                    {voiceCall.status === 'connected'
+                      ? `Voice ${voiceCall.participantCount}/2`
+                      : voiceCall.status === 'reconnecting'
+                      ? 'Reconnecting'
+                      : voiceCall.status === 'connecting'
+                      ? 'Connecting'
+                      : 'Voice 1/2'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={voiceCall.onToggleMute}
+                    disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
+                    className={`h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center transition-colors cursor-pointer disabled:opacity-45 disabled:pointer-events-none ${
+                      voiceCall.isMuted
+                        ? 'bg-[#3A1E1C] text-[#F2B8B2]'
+                        : 'hover:bg-[#1E4B3C] text-[#7AD3A8]'
+                    }`}
+                    title={voiceCall.isMuted ? 'Unmute mic' : 'Mute mic'}
+                    aria-label={voiceCall.isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  >
+                    {voiceCall.isMuted ? (
+                      <MicOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Mic className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void voiceCall.onLeaveCall()}
+                    disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
+                    className="h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center text-[#F2B8B2] hover:bg-[#3A1E1C] transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                    title="Leave voice call"
+                    aria-label="Leave voice call"
+                  >
+                    {voiceCall.isLeaving ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <PhoneOff className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              ) : voiceCall.isCallFull ? (
+                <Badge
+                  variant="default"
+                  className="h-7 sm:h-8 text-[10px] sm:text-[11px] px-2.5 hidden sm:inline-flex whitespace-nowrap"
+                  title="Voice call is limited to 2 participants"
+                >
+                  <Headphones className="w-3 h-3 text-[#9670FF]" />
+                  <span>Voice 2/2</span>
+                </Badge>
+              ) : voiceCall.incomingCaller ? (
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={voiceCall.onJoinCall}
+                  isLoading={voiceCall.status === 'joining'}
+                  disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
+                  className="h-7 sm:h-8 text-[11px] sm:text-xs px-2.5 sm:px-3 rounded-full whitespace-nowrap"
+                  leftIcon={<PhoneCall className="w-3.5 h-3.5 animate-pulse" />}
+                >
+                  <span className="hidden sm:inline">
+                    {voiceCall.status === 'joining'
+                      ? 'Joining…'
+                      : `Join · ${voiceCall.incomingCaller.username}`}
+                  </span>
+                  <span className="sm:hidden">
+                    {voiceCall.status === 'joining' ? 'Joining…' : 'Join'}
+                  </span>
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={voiceCall.onJoinCall}
+                  isLoading={voiceCall.status === 'joining'}
+                  disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
+                  className="h-7 sm:h-8 text-[11px] sm:text-xs px-2 sm:px-3 rounded-full whitespace-nowrap"
+                  leftIcon={<Mic className="w-3.5 h-3.5 text-[#9670FF]" />}
+                  aria-label="Join voice call"
+                >
+                  <span className="hidden sm:inline">
+                    {voiceCall.status === 'joining' ? 'Joining…' : 'Join Voice'}
+                  </span>
+                  <span className="sm:hidden">
+                    {voiceCall.status === 'joining' ? 'Joining…' : 'Voice'}
+                  </span>
+                </Button>
+              )}
+            </>
+          )}
+
+          {/* Optional Desktop Chat Toggle when collapsed */}
+          {onToggleChat && !isChatOpen && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onToggleChat}
+              disabled={isLeavingRoom}
+              className="h-8 text-xs rounded-full hidden lg:inline-flex"
+              leftIcon={<MessageSquare className="w-3.5 h-3.5 text-[#9670FF]" />}
+            >
+              Chat
             </Button>
           )}
 
           {/* Leave Room Button */}
-          <Link href="/">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-neutral-400 hover:text-rose-400"
-              title="Leave Room"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleLeaveRoom()}
+            disabled={isLeavingRoom}
+            className="h-7 w-7 sm:h-8 sm:w-8 p-0 rounded-full text-[#CDBF9F] hover:text-[#F2B8B2] hover:bg-[#3A1E1C]/60"
+            title="Leave Room"
+            aria-label="Leave screening room"
+          >
+            {isLeavingRoom ? (
+              <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+            ) : (
+              <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            )}
+          </Button>
         </div>
       </div>
     </div>

@@ -1,31 +1,180 @@
 import { getSupabaseBrowserClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/config';
-import { Room, RoomMember, RoomRole, ChatMessage } from '@/core/types/room.types';
+import { Room, RoomMember, RoomRole, ChatMessage, UserRoomSummary } from '@/core/types/room.types';
 import { UserIdentity } from '@/core/types/session.types';
 import { VideoSourceType } from '@/core/types/player.types';
+import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
+import { Database } from '../supabase/database.types';
+import { bandwidthService } from './bandwidthService';
+
+type RoomRow = Database['public']['Tables']['rooms']['Row'];
+
+function mapRoomRowToRoom(data: RoomRow): Room {
+  return {
+    id: data.id,
+    code: data.code,
+    title: data.title,
+    hostId: data.host_id,
+    videoType: data.video_type,
+    videoUrl: data.video_url,
+    currentPosition: data.current_position,
+    isPlaying: data.is_playing,
+    lastSyncedAt: data.last_synced_at,
+    isPrivate: data.is_private,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
 
 // In-memory dev fallback storage for when Supabase is not yet configured
 const devRooms = new Map<string, Room>();
 const devMembers = new Map<string, RoomMember[]>();
 const devMessages = new Map<string, ChatMessage[]>();
 
+// Deduplicate concurrent room lookups/creations (e.g. React Strict Mode double-mount)
+const inFlightCreates = new Map<string, Promise<{ room: Room | null; error?: string }>>();
+const inFlightGetOrCreate = new Map<string, Promise<{ room: Room | null; error?: string }>>();
+
+function clearTrackedRoomUploads(roomId: string): void {
+  const maybeFn = (
+    bandwidthService as { markRoomUploadsDeleted?: (id: string) => void } | undefined
+  )?.markRoomUploadsDeleted;
+  if (typeof maybeFn === 'function') {
+    maybeFn(roomId);
+  }
+}
+
 export const roomService = {
+  /**
+   * Creates a local in-memory watch room fallback.
+   */
+  createDevRoom(params: {
+    code: string;
+    title: string;
+    host: UserIdentity;
+    videoUrl?: string;
+    videoType?: VideoSourceType;
+  }): { room: Room } {
+    const videoUrl = params.videoUrl || '';
+    const videoType = params.videoType || 'youtube';
+
+    const mockRoom: Room = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `dev-${Date.now()}`,
+      code: params.code.toUpperCase(),
+      title: params.title,
+      hostId: params.host.id,
+      videoType,
+      videoUrl,
+      currentPosition: 0,
+      isPlaying: false,
+      lastSyncedAt: new Date().toISOString(),
+      isPrivate: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    devRooms.set(mockRoom.code, mockRoom);
+
+    const hostMember: RoomMember = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `member-${Date.now()}`,
+      roomId: mockRoom.id,
+      userId: params.host.id,
+      username: params.host.username,
+      role: 'host',
+      joinedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    };
+    devMembers.set(mockRoom.id, [hostMember]);
+
+    return { room: mockRoom };
+  },
+
+  /**
+   * Joins a local in-memory watch room fallback.
+   */
+  joinDevRoom(params: {
+    roomId: string;
+    user: UserIdentity;
+  }): { member: RoomMember | null; role: RoomRole; error?: string } {
+    const members = devMembers.get(params.roomId) || [];
+    const existing = members.find((m) => m.userId === params.user.id);
+    if (existing) {
+      return { member: existing, role: existing.role };
+    }
+
+    if (members.length >= SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS) {
+      return {
+        member: null,
+        role: 'viewer',
+        error: `Room has reached maximum capacity (${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}).`,
+      };
+    }
+
+    const role: RoomRole = members.length === 0 ? 'host' : 'viewer';
+    const newMember: RoomMember = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `member-${Date.now()}`,
+      roomId: params.roomId,
+      userId: params.user.id,
+      username: params.user.username,
+      role,
+      joinedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    };
+    members.push(newMember);
+    devMembers.set(params.roomId, members);
+    return { member: newMember, role };
+  },
+
   /**
    * Ensures the user's profile exists in database.
    */
   async ensureProfile(user: UserIdentity): Promise<void> {
-    if (!isSupabaseConfigured()) return;
-    const supabase = getSupabaseBrowserClient();
+    if (!isSupabaseConfigured() || !user.id) return;
+    try {
+      const supabase = getSupabaseBrowserClient();
 
-    await supabase.from('profiles').upsert(
-      {
-        id: user.id,
-        username: user.username,
-        is_guest: user.isGuest,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    );
+      await supabase.from('profiles').upsert(
+        {
+          id: user.id,
+          username: user.username,
+          is_guest: user.isGuest,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    } catch {
+      // Table might not be migrated yet in Supabase
+    }
+  },
+
+  /**
+   * Atomically retrieves an existing room by code or creates it if missing.
+   * Deduplicates concurrent calls for the same room code (e.g. React Strict Mode).
+   */
+  async getOrCreateRoom(params: {
+    code: string;
+    title: string;
+    host: UserIdentity;
+    videoUrl?: string;
+    videoType?: VideoSourceType;
+  }): Promise<{ room: Room | null; error?: string }> {
+    const normalizedCode = params.code.trim().toUpperCase();
+    const existingPromise = inFlightGetOrCreate.get(normalizedCode);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const promise = (async () => {
+      const existing = await this.getRoomByCode(normalizedCode);
+      if (existing) {
+        return { room: existing };
+      }
+      return this.createRoom({ ...params, code: normalizedCode });
+    })().finally(() => {
+      inFlightGetOrCreate.delete(normalizedCode);
+    });
+
+    inFlightGetOrCreate.set(normalizedCode, promise);
+    return promise;
   },
 
   /**
@@ -38,90 +187,96 @@ export const roomService = {
     videoUrl?: string;
     videoType?: VideoSourceType;
   }): Promise<{ room: Room | null; error?: string }> {
+    const normalizedCode = params.code.trim().toUpperCase();
     const videoUrl = params.videoUrl || '';
     const videoType = params.videoType || 'youtube';
 
     if (!isSupabaseConfigured()) {
-      const mockRoom: Room = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `dev-${Date.now()}`,
-        code: params.code.toUpperCase(),
-        title: params.title,
-        hostId: params.host.id,
-        videoType,
-        videoUrl,
-        currentPosition: 0,
-        isPlaying: false,
-        lastSyncedAt: new Date().toISOString(),
-        isPrivate: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      devRooms.set(mockRoom.code, mockRoom);
-
-      const hostMember: RoomMember = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `member-${Date.now()}`,
-        roomId: mockRoom.id,
-        userId: params.host.id,
-        username: params.host.username,
-        role: 'host',
-        joinedAt: new Date().toISOString(),
-        lastSeenAt: new Date().toISOString(),
-      };
-      devMembers.set(mockRoom.id, [hostMember]);
-
-      return { room: mockRoom };
+      const existingDev = devRooms.get(normalizedCode);
+      if (existingDev) return { room: existingDev };
+      return this.createDevRoom({ ...params, code: normalizedCode });
     }
 
-    try {
-      await this.ensureProfile(params.host);
-      const supabase = getSupabaseBrowserClient();
+    if (!params.host.id) {
+      return { room: null, error: 'You must be signed in to create a room.' };
+    }
 
-      const { data: roomData, error: roomError } = await supabase
-        .from('rooms')
-        .insert({
-          code: params.code.toUpperCase(),
-          title: params.title,
-          host_id: params.host.id,
-          video_type: videoType,
-          video_url: videoUrl,
-          current_position: 0,
-          is_playing: false,
-          is_private: true,
-        })
-        .select()
-        .single();
+    const existingPromise = inFlightCreates.get(normalizedCode);
+    if (existingPromise) {
+      return existingPromise;
+    }
 
-      if (roomError || !roomData) {
-        return { room: null, error: roomError?.message || 'Failed to create room.' };
+    const promise = (async (): Promise<{ room: Room | null; error?: string }> => {
+      try {
+        await this.ensureProfile(params.host);
+        const supabase = getSupabaseBrowserClient();
+
+        const { data: roomData, error: roomError } = await supabase
+          .from('rooms')
+          .insert({
+            code: normalizedCode,
+            title: params.title,
+            host_id: params.host.id,
+            video_type: videoType,
+            video_url: videoUrl,
+            current_position: 0,
+            is_playing: false,
+            is_private: true,
+          })
+          .select()
+          .single();
+
+        if (roomError || !roomData) {
+          if (roomError?.code === 'PGRST205' || roomError?.message?.includes('schema cache')) {
+            console.warn(
+              '[Syncora] Database tables pending migration in Supabase. Run supabase/full_setup.sql in your Supabase SQL Editor. Using local fallback.'
+            );
+            return this.createDevRoom({ ...params, code: normalizedCode });
+          }
+
+          // Handle concurrent creation or pre-existing room with same code (PostgreSQL 23505)
+          if (roomError?.code === '23505') {
+            const existingRoom = await this.getRoomByCode(normalizedCode);
+            if (existingRoom) {
+              return { room: existingRoom };
+            }
+            return {
+              room: null,
+              error: 'A room with this code already exists. Please create a new room or ask the host for access.',
+            };
+          }
+
+          return { room: null, error: roomError?.message || 'Failed to create room.' };
+        }
+
+        // Add host as the first member
+        const { error: memberError } = await supabase.from('room_members').upsert(
+          {
+            room_id: roomData.id,
+            user_id: params.host.id,
+            role: 'host',
+            last_seen_at: new Date().toISOString(),
+          },
+          { onConflict: 'room_id,user_id' }
+        );
+
+        if (memberError) {
+          console.warn('[Syncora] Warning adding host to room_members:', memberError.message);
+        }
+
+        const formattedRoom = mapRoomRowToRoom(roomData);
+
+        return { room: formattedRoom };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown error creating room';
+        return { room: null, error: msg };
       }
+    })().finally(() => {
+      inFlightCreates.delete(normalizedCode);
+    });
 
-      // Add host as the first member
-      await supabase.from('room_members').insert({
-        room_id: roomData.id,
-        user_id: params.host.id,
-        role: 'host',
-      });
-
-      const formattedRoom: Room = {
-        id: roomData.id,
-        code: roomData.code,
-        title: roomData.title,
-        hostId: roomData.host_id,
-        videoType: roomData.video_type,
-        videoUrl: roomData.video_url,
-        currentPosition: roomData.current_position,
-        isPlaying: roomData.is_playing,
-        lastSyncedAt: roomData.last_synced_at,
-        isPrivate: roomData.is_private,
-        createdAt: roomData.created_at,
-        updatedAt: roomData.updated_at,
-      };
-
-      return { room: formattedRoom };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error creating room';
-      return { room: null, error: msg };
-    }
+    inFlightCreates.set(normalizedCode, promise);
+    return promise;
   },
 
   /**
@@ -136,28 +291,32 @@ export const roomService = {
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('code', normalized)
-        .maybeSingle();
 
-      if (error || !data) return null;
+      // Attempt safe RPC lookup (accessible to un-joined participants without table scanning)
+      const { data: rpcRows, error: rpcError } = await supabase
+        .rpc('lookup_room_by_code', { p_code: normalized });
 
-      return {
-        id: data.id,
-        code: data.code,
-        title: data.title,
-        hostId: data.host_id,
-        videoType: data.video_type,
-        videoUrl: data.video_url,
-        currentPosition: data.current_position,
-        isPlaying: data.is_playing,
-        lastSyncedAt: data.last_synced_at,
-        isPrivate: data.is_private,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
+      let data = Array.isArray(rpcRows)
+        ? (rpcRows.length > 0 ? rpcRows[0] : null)
+        : (rpcRows ?? null);
+
+      // Fallback to direct table query only if the RPC failed / is not deployed yet
+      if (rpcError) {
+        const { data: directData, error: directError } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('code', normalized)
+          .maybeSingle();
+
+        if (directError?.code === 'PGRST205' || directError?.message?.includes('schema cache')) {
+          return devRooms.get(normalized) || null;
+        }
+        data = directData;
+      }
+
+      if (!data) return null;
+
+      return mapRoomRowToRoom(data);
     } catch (err) {
       console.warn('[Syncora] Failed to fetch room by code:', err);
       return null;
@@ -170,12 +329,22 @@ export const roomService = {
   async joinRoom(params: {
     roomId: string;
     user: UserIdentity;
+    hostId?: string;
   }): Promise<{ member: RoomMember | null; role: RoomRole; error?: string }> {
     if (!isSupabaseConfigured()) {
       const members = devMembers.get(params.roomId) || [];
       const existing = members.find((m) => m.userId === params.user.id);
       if (existing) {
         return { member: existing, role: existing.role };
+      }
+
+      // Enforce participant limit to prevent viral egress spikes
+      if (members.length >= SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS) {
+        return {
+          member: null,
+          role: 'viewer',
+          error: `Room has reached its maximum capacity (${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}).`,
+        };
       }
 
       // If no members, first is host, otherwise viewer
@@ -198,14 +367,38 @@ export const roomService = {
       await this.ensureProfile(params.user);
       const supabase = getSupabaseBrowserClient();
 
-      // Check if user is host of the room
-      const { data: roomData } = await supabase
-        .from('rooms')
-        .select('host_id')
-        .eq('id', params.roomId)
-        .single();
+      // Check current participant count and existing membership
+      const { count: memberCount } = await supabase
+        .from('room_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('room_id', params.roomId);
 
-      const isHost = roomData?.host_id === params.user.id;
+      const { data: existingMember } = await supabase
+        .from('room_members')
+        .select('id')
+        .eq('room_id', params.roomId)
+        .eq('user_id', params.user.id)
+        .maybeSingle();
+
+      if (!existingMember && (memberCount || 0) >= SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS) {
+        return {
+          member: null,
+          role: 'viewer',
+          error: `Room has reached its maximum capacity (${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}). Watch rooms are capped at ${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} participants to protect bandwidth.`,
+        };
+      }
+
+      // Determine host status using known hostId if provided, otherwise query safely
+      let isHost = params.hostId ? params.hostId === params.user.id : false;
+      if (!params.hostId) {
+        const { data: roomData } = await supabase
+          .from('rooms')
+          .select('host_id')
+          .eq('id', params.roomId)
+          .maybeSingle();
+        isHost = roomData?.host_id === params.user.id;
+      }
+
       const role: RoomRole = isHost ? 'host' : 'viewer';
 
       // Upsert membership
@@ -224,6 +417,9 @@ export const roomService = {
         .single();
 
       if (error || !memberData) {
+        if (error?.code === 'PGRST205' || error?.message?.includes('schema cache')) {
+          return this.joinDevRoom(params);
+        }
         return { member: null, role: 'viewer', error: error?.message };
       }
 
@@ -239,8 +435,8 @@ export const roomService = {
 
       return { member: formattedMember, role: formattedMember.role };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown join error';
-      return { member: null, role: 'viewer', error: msg };
+      console.warn('[Syncora] Join room fallback:', err);
+      return this.joinDevRoom(params);
     }
   },
 
@@ -259,7 +455,12 @@ export const roomService = {
         .select('*, profiles(username)')
         .eq('room_id', roomId);
 
-      if (error || !data) return [];
+      if (error || !data) {
+        if (error?.code === 'PGRST205' || error?.message?.includes('schema cache')) {
+          return devMembers.get(roomId) || [];
+        }
+        return [];
+      }
 
       type MemberWithProfile = {
         id: string;
@@ -313,16 +514,20 @@ export const roomService = {
 
     try {
       const supabase = getSupabaseBrowserClient();
-      await supabase
+      const { error } = await supabase
         .from('rooms')
         .update({
           current_position: data.currentPosition,
           is_playing: data.isPlaying,
-          ...(data.videoUrl ? { video_url: data.videoUrl } : {}),
-          ...(data.videoType ? { video_type: data.videoType } : {}),
+          ...(data.videoUrl !== undefined ? { video_url: data.videoUrl } : {}),
+          ...(data.videoType !== undefined ? { video_type: data.videoType } : {}),
           last_synced_at: new Date().toISOString(),
         })
         .eq('id', roomId);
+
+      if (error) {
+        console.warn('[Syncora] Failed to update room playback in DB:', error.message);
+      }
     } catch (err) {
       console.warn('[Syncora] Failed to update room playback in DB:', err);
     }
@@ -371,7 +576,12 @@ export const roomService = {
         .order('created_at', { ascending: true })
         .limit(100);
 
-      if (error || !data) return [];
+      if (error || !data) {
+        if (error?.code === 'PGRST205' || error?.message?.includes('schema cache')) {
+          return devMessages.get(roomId) || [];
+        }
+        return [];
+      }
 
       type MessageWithProfile = {
         id: string;
@@ -442,6 +652,21 @@ export const roomService = {
         .single();
 
       if (error || !data) {
+        if (error?.code === 'PGRST205' || error?.message?.includes('schema cache')) {
+          const newMsg: ChatMessage = {
+            id: crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`,
+            roomId: params.roomId,
+            userId: params.userId,
+            username: params.username,
+            content: params.content,
+            type: messageType,
+            createdAt: now,
+          };
+          const existing = devMessages.get(params.roomId) || [];
+          existing.push(newMsg);
+          devMessages.set(params.roomId, existing);
+          return newMsg;
+        }
         console.warn('[Syncora] Send chat message error:', error);
         return null;
       }
@@ -469,6 +694,179 @@ export const roomService = {
     } catch (err) {
       console.warn('[Syncora] Error sending message:', err);
       return null;
+    }
+  },
+
+  /**
+   * Lists recent rooms the user created or joined, ordered by latest activity.
+   */
+  async getUserRooms(userId: string): Promise<UserRoomSummary[]> {
+    if (!userId) return [];
+
+    if (!isSupabaseConfigured()) {
+      const summaries: UserRoomSummary[] = [];
+      for (const room of devRooms.values()) {
+        const members = devMembers.get(room.id) || [];
+        const membership = members.find((m) => m.userId === userId);
+        if (room.hostId === userId || membership) {
+          summaries.push({
+            ...room,
+            userRole: room.hostId === userId ? 'host' : (membership?.role || 'viewer'),
+            joinedAt: membership?.joinedAt || room.createdAt,
+          });
+        }
+      }
+      return summaries.sort(
+        (a, b) => new Date(b.lastSyncedAt).getTime() - new Date(a.lastSyncedAt).getTime()
+      );
+    }
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const summaryMap = new Map<string, UserRoomSummary>();
+
+      type MemberWithRoom = {
+        role: RoomRole;
+        joined_at: string;
+        rooms: RoomRow | null;
+      };
+
+      const [{ data: memberRows }, { data: hostedRows }] = await Promise.all([
+        supabase
+          .from('room_members')
+          .select('role, joined_at, rooms(*)')
+          .eq('user_id', userId)
+          .order('last_seen_at', { ascending: false })
+          .limit(12),
+        supabase
+          .from('rooms')
+          .select('*')
+          .eq('host_id', userId)
+          .order('last_synced_at', { ascending: false })
+          .limit(12),
+      ]);
+
+      if (Array.isArray(memberRows)) {
+        (memberRows as unknown as MemberWithRoom[]).forEach((row) => {
+          if (row.rooms) {
+            const mapped = mapRoomRowToRoom(row.rooms);
+            summaryMap.set(mapped.id, {
+              ...mapped,
+              userRole: mapped.hostId === userId ? 'host' : row.role,
+              joinedAt: row.joined_at,
+            });
+          }
+        });
+      }
+
+      if (Array.isArray(hostedRows)) {
+        hostedRows.forEach((row) => {
+          if (!summaryMap.has(row.id)) {
+            const mapped = mapRoomRowToRoom(row);
+            summaryMap.set(mapped.id, {
+              ...mapped,
+              userRole: 'host',
+              joinedAt: mapped.createdAt,
+            });
+          }
+        });
+      }
+
+      return Array.from(summaryMap.values())
+        .sort((a, b) => new Date(b.lastSyncedAt).getTime() - new Date(a.lastSyncedAt).getTime())
+        .slice(0, 9);
+    } catch (err) {
+      console.warn('[Syncora] Failed to fetch user rooms:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Deletes a hosted room (including any uploaded room videos in Storage, metrics, members, and chat)
+   * or removes the viewer's membership from a joined room.
+   */
+  async leaveOrDeleteRoom(
+    roomId: string,
+    userId: string,
+    isHost: boolean
+  ): Promise<boolean> {
+    if (!roomId || !userId) return false;
+
+    if (!isSupabaseConfigured()) {
+      if (isHost) {
+        for (const [code, r] of devRooms.entries()) {
+          if (r.id === roomId) {
+            devRooms.delete(code);
+            devMembers.delete(roomId);
+            devMessages.delete(roomId);
+            break;
+          }
+        }
+        clearTrackedRoomUploads(roomId);
+      } else {
+        const members = devMembers.get(roomId) || [];
+        devMembers.set(
+          roomId,
+          members.filter((m) => m.userId !== userId)
+        );
+      }
+      return true;
+    }
+
+    try {
+      if (isHost) {
+        // Prefer server route so Storage objects, storage_usage_metrics, and room cascade cleanly
+        if (typeof window !== 'undefined') {
+          try {
+            const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+              method: 'DELETE',
+            });
+            if (res.ok || res.status === 404) {
+              clearTrackedRoomUploads(roomId);
+              return true;
+            }
+          } catch {
+            // Fall through to direct client cleanup
+          }
+        }
+
+        const supabase = getSupabaseBrowserClient();
+
+        // Remove any Storage files while the room row (and host RLS check) still exists
+        const { data: storageFiles } = await supabase.storage
+          .from('videos')
+          .list(roomId, { limit: 100 });
+
+        if (Array.isArray(storageFiles) && storageFiles.length > 0) {
+          const paths = storageFiles
+            .filter((f) => f.name && f.id !== null)
+            .map((f) => `${roomId}/${f.name}`);
+          if (paths.length > 0) {
+            await supabase.storage.from('videos').remove(paths);
+          }
+        }
+
+        const { error } = await supabase
+          .from('rooms')
+          .delete()
+          .eq('id', roomId)
+          .eq('host_id', userId);
+        if (!error) {
+          clearTrackedRoomUploads(roomId);
+        }
+        return !error;
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      const { error } = await supabase
+        .from('room_members')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', userId);
+      return !error;
+    } catch (err) {
+      console.warn('[Syncora] Failed to leave or delete room:', err);
+      return false;
     }
   },
 };
