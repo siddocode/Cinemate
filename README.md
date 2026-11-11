@@ -37,12 +37,12 @@ npm install
 ```bash
 cp .env.example .env.local
 ```
-Fill in your Supabase credentials from your [Supabase Dashboard](https://supabase.com/dashboard) (Settings > API):
+Fill in your Supabase credentials from your [Supabase Dashboard](https://supabase.com/dashboard) (Project Settings > API Keys):
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
 ### 3. Run Database Migrations

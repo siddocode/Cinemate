@@ -24,7 +24,7 @@ This document contains permanent instructions, coding standards, and architectur
    - **Supabase PostgreSQL & Changes**: Used for durable application data (room metadata, memberships, chat history, user profiles).
 
 4. **Security & Validation**
-   - **Zero Secret Leaks**: The Supabase service-role key (`SUPABASE_SERVICE_ROLE_KEY`) must NEVER be exposed to the client bundle or prefixed with `NEXT_PUBLIC_`.
+   - **Zero Secret Leaks**: The Supabase secret key (`SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY`) must NEVER be exposed to the client bundle or prefixed with `NEXT_PUBLIC_`.
    - **Server-Side Authorization**: Never trust client claims of host status. Validate room ownership and membership on the server (via Supabase RLS and Next.js Server Actions / Route Handlers).
    - **Input Validation**: Sanitize all URLs, chat messages, room codes, and timestamps on the server using Zod or equivalent schemas.
 

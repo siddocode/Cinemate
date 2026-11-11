@@ -45,7 +45,8 @@ e# CURRENT_STATE.md — Syncora Current Project State
 - Built 3-tab video selector modal in [`ChangeVideoModal.tsx`](file:///home/sid/Desktop/Cinemate/src/components/room/ChangeVideoModal.tsx).
 
 ### Phase 7 — Testing, Security & Deployment ✅
-- Conducted security audit: Zero client-side secret leaks (`SUPABASE_SERVICE_ROLE_KEY` strictly server-side).
+- Conducted security audit: Zero client-side secret leaks (`SUPABASE_SECRET_KEY` strictly server-side).
+- Configured modern Supabase API key architecture: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_...`) on client and `SUPABASE_SECRET_KEY` (`sb_secret_...`) on server, with backward-compatibility fallbacks.
 - Verified production build: `npm run build` completed in ~2.5s with zero errors and zero ESLint warnings.
 - Created [`DEPLOYMENT.md`](file:///home/sid/Desktop/Cinemate/DEPLOYMENT.md) production deployment guide for Vercel and Supabase.
 - Initialized local git repository with clean commit history.

@@ -102,4 +102,14 @@
   - Layout priority: Side-by-side Theater Mode on desktop/tablets with a persistent real-time chat panel directly beside the video so chatting never interrupts or obscures video playback. On mobile, responsive split view (video pinned top, real-time chat persistent below).
   - The underlying database (`room_members`) and Realtime engine remain multi-user capable under the hood so scaling to groups in the future requires zero architectural rework.
 
+---
+
+## ADR-009: Supabase Modern API Key Format (`sb_publishable_...` and `sb_secret_...`)
+
+- **Context**: Supabase transitioned to a new API key architecture featuring prefix-identifiable keys: `sb_publishable_...` (replacing the JWT `anon` key) and `sb_secret_...` (replacing the JWT `service_role` key).
+- **Decision**:
+  - The client bundle strictly uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (configured in `src/lib/supabase/config.ts` and `src/lib/supabase/client.ts`).
+  - Privileged administrative access strictly uses `SUPABASE_SECRET_KEY` (configured in `src/lib/supabase/server.ts` via `getSupabaseAdminClient()`), which is never prefixed with `NEXT_PUBLIC_` and never exported to browser bundles.
+  - Backward compatibility: Fallbacks to `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are maintained so legacy projects continue to function seamlessly.
+
 

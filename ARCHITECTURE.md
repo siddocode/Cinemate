@@ -240,9 +240,9 @@ sequenceDiagram
 
 - **Public Client Variables**:
   - `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL.
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Safe public anon key (protected by RLS).
+  - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Safe public publishable key (`sb_publishable_...`, protected by RLS; with legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` fallback).
 - **Server-Only Variables**:
-  - `SUPABASE_SERVICE_ROLE_KEY`: Used exclusively inside Next.js Route Handlers / Server Actions for administrative operations (e.g. storage signed uploads verification, host failover escalation). Never leaked to browser bundles.
+  - `SUPABASE_SECRET_KEY`: Used exclusively inside Next.js Route Handlers / Server Actions for administrative operations (e.g. storage signed uploads verification, host failover escalation; with legacy `SUPABASE_SERVICE_ROLE_KEY` fallback). Never leaked to browser bundles.
 - **Authentication**:
   - Supabase Anonymous Sign-In enabled to support zero-friction guest joins while maintaining cryptographically signed JWT sessions for RLS.
   - Optional Email / OAuth sign-in to claim and retain permanent rooms.

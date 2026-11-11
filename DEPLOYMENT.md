@@ -36,11 +36,12 @@ Syncora operates completely within Supabase's generous free tier (zero monthly c
 7. Click **Save**.
 
 ### Step 4: Retrieve API Credentials
-1. In your Supabase Dashboard, navigate to **Project Settings** > **API**.
+1. In your Supabase Dashboard, navigate to **Project Settings** > **API Keys**.
 2. Note the following values:
    - **Project URL** (e.g. `https://xyzcompany.supabase.co`)
-   - **anon / public key** (client-side JWT safe for browsers)
-   - **service_role key** (secret key for server-side operations only)
+   - **Publishable key** (`sb_publishable_...`, client-side key safe for browsers)
+   - **Secret key** (`sb_secret_...`, privileged secret key for server-side operations only)
+   *(Legacy `anon` and `service_role` keys are also supported via backward-compatibility fallbacks).*
 
 ---
 
@@ -54,9 +55,9 @@ cp .env.example .env.local
 Fill in your actual Supabase credentials:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi... (your public anon key)
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_... (your publishable key)
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi... (your service role key)
+SUPABASE_SECRET_KEY=sb_secret_... (your secret key)
 ```
 
 Run the development server:
@@ -90,12 +91,12 @@ Under the **Environment Variables** section in Vercel, configure:
 | Variable Name | Environment | Value |
 | :--- | :--- | :--- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Production, Preview | `https://your-project-ref.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production, Preview | Your public anon key |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Production, Preview | Your publishable key (`sb_publishable_...`) |
 | `NEXT_PUBLIC_APP_URL` | Production, Preview | `https://your-syncora-app.vercel.app` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Production, Preview | Your private service_role key |
+| `SUPABASE_SECRET_KEY` | Production, Preview | Your secret key (`sb_secret_...`) |
 
 > [!CAUTION]
-> Never prefix `SUPABASE_SERVICE_ROLE_KEY` with `NEXT_PUBLIC_`. It must remain strictly server-side.
+> Never prefix `SUPABASE_SECRET_KEY` with `NEXT_PUBLIC_`. It must remain strictly server-side.
 
 ### Step 4: Deploy
 Click **Deploy**. Vercel will build and deploy the Next.js App Router application.

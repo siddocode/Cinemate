@@ -1,14 +1,23 @@
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { Database } from './database.types';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config';
 
+// Server-only secret key (sb_secret_...) - NEVER exposed to browser bundles
+const SUPABASE_SECRET_KEY =
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+/**
+ * Creates a server client with the user's cookie context.
+ * Used for SSR and standard server component queries respecting RLS.
+ */
 export async function getSupabaseServerClient() {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(
     SUPABASE_URL || 'https://placeholder.supabase.co',
-    SUPABASE_ANON_KEY || 'placeholder-anon-key',
+    SUPABASE_PUBLISHABLE_KEY || 'placeholder-publishable-key',
     {
       cookies: {
         getAll() {
@@ -20,8 +29,7 @@ export async function getSupabaseServerClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing user sessions.
+            // Ignored when called from Server Components
           }
         },
       },
@@ -29,3 +37,26 @@ export async function getSupabaseServerClient() {
   );
 }
 
+/**
+ * Creates a privileged admin client using the secret key (SUPABASE_SECRET_KEY).
+ * STRICTLY for server-only administrative tasks (storage policy administration, etc.).
+ * NEVER exposed to client bundles.
+ */
+export function getSupabaseAdminClient() {
+  if (!SUPABASE_SECRET_KEY) {
+    throw new Error(
+      '[Syncora] SUPABASE_SECRET_KEY is not defined. Ensure SUPABASE_SECRET_KEY is set in your server environment.'
+    );
+  }
+
+  return createClient<Database>(
+    SUPABASE_URL || 'https://placeholder.supabase.co',
+    SUPABASE_SECRET_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}
