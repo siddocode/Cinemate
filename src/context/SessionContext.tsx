@@ -1,21 +1,29 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+} from 'react';
 import { UserIdentity, SessionContextType } from '@/core/types/session.types';
 
 const SESSION_STORAGE_KEY = 'syncora_guest_session';
 
-const defaultContext: SessionContextType = {
-  user: {
-    id: '',
-    username: 'Guest',
-    isGuest: true,
-  },
-  setUsername: () => {},
-  isInitialized: false,
+const SERVER_SESSION: UserIdentity = {
+  id: '',
+  username: 'Guest',
+  isGuest: true,
 };
 
-const SessionContext = createContext<SessionContextType>(defaultContext);
+let currentSession: UserIdentity = SERVER_SESSION;
+let sessionListeners: Array<() => void> = [];
+
+function emitSessionChange() {
+  for (const listener of sessionListeners) {
+    listener();
+  }
+}
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -28,60 +36,91 @@ function generateUUID(): string {
   });
 }
 
-function getInitialSession(): UserIdentity {
-  if (typeof window !== 'undefined') {
+export const sessionStore = {
+  subscribe(listener: () => void) {
+    sessionListeners.push(listener);
+    return () => {
+      sessionListeners = sessionListeners.filter((l) => l !== listener);
+    };
+  },
+  getSnapshot(): UserIdentity {
+    return currentSession;
+  },
+  getServerSnapshot(): UserIdentity {
+    return SERVER_SESSION;
+  },
+  init() {
+    if (typeof window === 'undefined') return;
+
     try {
       const stored = localStorage.getItem(SESSION_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed.id && parsed.username) {
-          return parsed;
+          currentSession = parsed;
+          emitSessionChange();
+          return;
         }
       }
     } catch {
       // Local storage unavailable
     }
-  }
 
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  return {
-    id: generateUUID(),
-    username: `Guest-${randomSuffix}`,
-    isGuest: true,
-  };
-}
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const newSession: UserIdentity = {
+      id: generateUUID(),
+      username: `Guest-${randomSuffix}`,
+      isGuest: true,
+    };
 
-export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserIdentity>(getInitialSession);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  useEffect(() => {
-    // Ensure session is synchronized to localStorage
+    currentSession = newSession;
     try {
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
-    } catch (err) {
-      console.warn('[Syncora] Failed to save session to localStorage:', err);
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
+    } catch {
+      // Storage quota or restriction
     }
-  }, [user]);
-
-  // Mark initialized once mounted on client
-  useEffect(() => {
-    const timer = setTimeout(() => setIsInitialized(true), 0);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const updateUsername = (newUsername: string) => {
+    emitSessionChange();
+  },
+  setUsername(newUsername: string) {
     const trimmed = newUsername.trim();
     if (!trimmed) return;
 
-    setUser((prev) => ({ ...prev, username: trimmed }));
-  };
+    currentSession = { ...currentSession, username: trimmed };
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentSession));
+    } catch {
+      // Storage quota or restriction
+    }
+    emitSessionChange();
+  },
+};
+
+const defaultContext: SessionContextType = {
+  user: SERVER_SESSION,
+  setUsername: () => {},
+  isInitialized: false,
+};
+
+const SessionContext = createContext<SessionContextType>(defaultContext);
+
+export function SessionProvider({ children }: { children: React.ReactNode }) {
+  const user = useSyncExternalStore(
+    sessionStore.subscribe,
+    sessionStore.getSnapshot,
+    sessionStore.getServerSnapshot
+  );
+
+  useEffect(() => {
+    sessionStore.init();
+  }, []);
+
+  const isInitialized = user.id !== '';
 
   return (
     <SessionContext.Provider
       value={{
         user,
-        setUsername: updateUsername,
+        setUsername: sessionStore.setUsername,
         isInitialized,
       }}
     >

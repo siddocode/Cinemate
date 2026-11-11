@@ -1,4 +1,4 @@
-# CURRENT_STATE.md — Syncora Current Project State
+e# CURRENT_STATE.md — Syncora Current Project State
 
 ## Project Status
 

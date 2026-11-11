@@ -60,7 +60,10 @@ export const Navbar: React.FC = () => {
             <div className="w-6 h-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
               <User className="w-3.5 h-3.5" />
             </div>
-            <span className="font-medium max-w-[120px] truncate text-white">
+            <span
+              className="font-medium max-w-[120px] truncate text-white"
+              suppressHydrationWarning
+            >
               {user.username}
             </span>
             <Edit2 className="w-3 h-3 text-neutral-500 group-hover:text-indigo-400 transition-colors" />

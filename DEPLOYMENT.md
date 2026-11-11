@@ -122,3 +122,4 @@ Click **Deploy**. Vercel will build and deploy the Next.js App Router applicatio
    - Window 2 immediately enters a 30-second amber countdown banner.
    - If Window 1 reopens within 30 seconds, Host control resumes.
    - If 30 seconds elapse, Window 2 is automatically promoted to Host.
+
