@@ -76,9 +76,9 @@
 ---
 
 ## Phase 7 — Testing, Security and Deployment
-- [ ] Multi-user stress and latency simulation tests across multiple devices.
-- [ ] Test mobile browsers (iOS Safari, Android Chrome) for autoplay and muted playback requirements.
-- [ ] Audit RLS security policies and server endpoints against unauthorized room/chat tampering.
-- [ ] Optimize bundle size, dynamic imports for player adapters, and Lighthouse performance.
-- [ ] Prepare production environment configuration and deployment guide for Vercel.
-- [ ] Perform final end-to-end verification and handoff documentation.
+- [x] Multi-user stress and latency simulation tests across multiple devices.
+- [x] Test mobile browsers (iOS Safari, Android Chrome) for autoplay and muted playback requirements.
+- [x] Audit RLS security policies and server endpoints against unauthorized room/chat tampering (zero secret leaks verified).
+- [x] Optimize bundle size, dynamic imports for player adapters, and Lighthouse performance.
+- [x] Prepare production environment configuration and deployment guide for Vercel in `DEPLOYMENT.md`.
+- [x] Perform final end-to-end verification and handoff documentation.
