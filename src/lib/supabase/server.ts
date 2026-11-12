@@ -14,7 +14,7 @@ const SUPABASE_SECRET_KEY =
 
 /**
  * Creates a server client with the user's cookie context.
- * Used for SSR and standard server component queries respecting RLS.
+ * Used for SSR and standard serenver component queries respecting RLS.
  */
 export async function getSupabaseServerClient() {
   const cookieStore = await cookies();

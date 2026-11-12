@@ -9,7 +9,7 @@ export function getSupabaseBrowserClient() {
 
   if (!isSupabaseConfigured()) {
     console.warn(
-      '[Syncora] Supabase credentials not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local.'
+      '[Syncora] Supabase credentials not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in your environment.'
     );
   }
 

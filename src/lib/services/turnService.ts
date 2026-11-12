@@ -27,6 +27,8 @@ export interface TurnServiceDeps {
 const DEFAULT_STUN_URLS = [
   'stun:stun.cloudflare.com:3478',
   'stun:stun.l.google.com:19302',
+  'stun:stun1.l.google.com:19302',
+  'stun:stun2.l.google.com:19302',
 ];
 
 const KEY_ID_PATTERN = /^[a-zA-Z0-9_-]{8,128}$/;

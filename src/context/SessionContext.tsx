@@ -153,7 +153,7 @@ export const sessionStore = {
     password: string
   ): Promise<SignInResult> {
     if (!isSupabaseConfigured()) {
-      return { error: 'Supabase credentials not configured in .env.local.' };
+      return { error: 'Supabase credentials not configured. Please ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are set.' };
     }
 
     try {
@@ -207,7 +207,7 @@ export const sessionStore = {
     username: string
   ): Promise<SignUpResult> {
     if (!isSupabaseConfigured()) {
-      return { error: 'Supabase credentials not configured in .env.local.' };
+      return { error: 'Supabase credentials not configured. Please ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are set.' };
     }
 
     try {
