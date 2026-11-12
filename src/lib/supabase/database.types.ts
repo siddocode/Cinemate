@@ -350,6 +350,25 @@ export interface Database {
         };
         Returns: boolean;
       };
+      create_room_session: {
+        Args: {
+          p_code: string;
+          p_title?: string;
+          p_video_url?: string;
+          p_video_type?: string;
+          p_username?: string | null;
+          p_is_guest?: boolean;
+        };
+        Returns: Json;
+      };
+      join_room_session: {
+        Args: {
+          p_code: string;
+          p_username?: string | null;
+          p_is_guest?: boolean;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;

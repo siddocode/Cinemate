@@ -8,8 +8,10 @@ interface RoomPageProps {
 }
 
 async function RoomContent({ params, searchParams }: RoomPageProps) {
-  const resolvedParams = await params;
-  const resolvedSearchParams = await searchParams;
+  const [resolvedParams, resolvedSearchParams] = await Promise.all([
+    params,
+    searchParams,
+  ]);
 
   const roomCode = resolvedParams.code;
   const videoId = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : undefined;

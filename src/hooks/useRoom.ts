@@ -1,7 +1,15 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Room, RoomMember, RoomRole, DuoStatus, ParticipantPresence } from '@/core/types/room.types';
+import {
+  ChatMessage,
+  InitialChatHistory,
+  Room,
+  RoomMember,
+  RoomRole,
+  DuoStatus,
+  ParticipantPresence,
+} from '@/core/types/room.types';
 import { VideoSourceType } from '@/core/types/player.types';
 import { useSession } from './useSession';
 import { roomService } from '@/lib/services/roomService';
@@ -15,10 +23,12 @@ import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
 import { Database } from '@/lib/supabase/database.types';
 import {
   emitRoomCallSlotChange,
+  emitRoomChatBroadcast,
   emitRoomChatInsert,
   RealtimeCallSlotRow,
   RealtimeChatMessageRow,
 } from '@/lib/supabase/roomRealtimeBus';
+import { isValidChatBroadcastPayload } from '@/lib/utils/chat';
 
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -32,7 +42,12 @@ interface RawPresence {
   joinedAt?: number;
 }
 
-export function useRoom(roomCode: string, initialTitle?: string, allowCreate = false) {
+export function useRoom(
+  roomCode: string,
+  initialTitle?: string,
+  allowCreate = false,
+  initialVideoId?: string
+) {
   const { user, isInitialized } = useSession();
   const [room, setRoom] = useState<Room | null>(null);
   const [role, setRole] = useState<RoomRole>('viewer');
@@ -48,10 +63,21 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
   const [hostGraceSecondsLeft, setHostGraceSecondsLeft] = useState<number | null>(null);
   const [userJoinedAt] = useState<number>(() => Date.now());
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
+  const [initialChatHistory, setInitialChatHistory] = useState<InitialChatHistory>({
+    roomId: '',
+    messages: [],
+    isLoading: true,
+    loaded: false,
+  });
 
   const graceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const realtimeAuthPromiseRef = useRef<{
+    userId: string;
+    promise: Promise<void>;
+  } | null>(null);
   const userRef = useRef(user);
   const initialTitleRef = useRef(initialTitle);
+  const initialVideoIdRef = useRef(initialVideoId);
   const roleRef = useRef(role);
   const roomHostIdRef = useRef<string | undefined>(room?.hostId);
   const roomVideoRef = useRef<{ videoUrl: string; videoType: VideoSourceType }>({
@@ -66,6 +92,10 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
   useEffect(() => {
     initialTitleRef.current = initialTitle;
   }, [initialTitle]);
+
+  useEffect(() => {
+    initialVideoIdRef.current = initialVideoId;
+  }, [initialVideoId]);
 
   useEffect(() => {
     roleRef.current = role;
@@ -93,61 +123,89 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
         const currentUser = userRef.current;
         const resolvedTitle =
           initialTitleRef.current?.trim().slice(0, 100) || 'Our Watch Party';
-        let loadedRoom: Room | null = null;
-        let loadError: string | undefined;
+        const resolvedInitialVideo = initialVideoIdRef.current?.trim() || '';
 
-        if (allowCreate) {
-          const roomRes = await roomService.getOrCreateRoom({
-            code: roomCode,
-            title: resolvedTitle,
-            host: currentUser,
-          });
-          loadedRoom = roomRes.room;
-          loadError = roomRes.error;
-        } else {
-          loadedRoom = await roomService.getRoomByCode(roomCode);
-          if (!loadedRoom) {
-            if (isMounted) {
-              setIsRoomClosed(true);
-              setRoomClosedMessage(
-                'This screening room was closed by the host or no longer exists.'
-              );
-              setIsLoading(false);
-            }
-            return;
-          }
-        }
+        // Pre-warm Realtime socket JWT auth in parallel with room creation/join RPC
+        const warmRealtimePromise = isSupabaseConfigured()
+          ? (async () => {
+              try {
+                const supabase = getSupabaseBrowserClient();
+                const token = await getAuthenticatedAccessToken(supabase);
+                await supabase.realtime.setAuth(token ?? null);
+              } catch {
+                // Handled gracefully during channel subscribe fallback
+              }
+            })()
+          : Promise.resolve();
+        realtimeAuthPromiseRef.current = {
+          userId: currentUser.id,
+          promise: warmRealtimePromise,
+        };
 
-        if (!loadedRoom) {
-          if (isMounted) setError(loadError || 'Failed to initialize room.');
+        // Single atomic RPC: creates/joins room, ensures profile & capacity, and returns room + members
+        const sessionRes = allowCreate
+          ? await roomService.createRoomSession({
+              code: roomCode,
+              title: resolvedTitle,
+              host: currentUser,
+              videoUrl: resolvedInitialVideo,
+              videoType: 'youtube',
+            })
+          : await roomService.joinRoomSession({
+              code: roomCode,
+              user: currentUser,
+            });
+
+        if (!isMounted) return;
+
+        if (sessionRes.notFound) {
+          setIsRoomClosed(true);
+          setRoomClosedMessage(
+            'This screening room was closed by the host or no longer exists.'
+          );
           setIsLoading(false);
           return;
         }
 
-        // Join the room BEFORE setting room state so membership exists in DB prior to Realtime subscribe()
-        const joinRes = await roomService.joinRoom({
-          roomId: loadedRoom.id,
-          user: currentUser,
-          hostId: loadedRoom.hostId,
+        if (sessionRes.error || !sessionRes.room) {
+          setError(sessionRes.error || 'Failed to initialize room.');
+          setIsLoading(false);
+          return;
+        }
+
+        const resolvedRoom = sessionRes.room;
+
+        // Start chat history fetch immediately in parallel with Realtime subscribe & player mount
+        setInitialChatHistory({
+          roomId: resolvedRoom.id,
+          messages: [],
+          isLoading: true,
+          loaded: false,
         });
+        void roomService
+          .getChatMessages(resolvedRoom.id)
+          .then((history: ChatMessage[]) => {
+            if (!isMounted) return;
+            setInitialChatHistory({
+              roomId: resolvedRoom.id,
+              messages: history,
+              isLoading: false,
+              loaded: true,
+            });
+          })
+          .catch(() => {
+            if (!isMounted) return;
+            setInitialChatHistory({
+              roomId: resolvedRoom.id,
+              messages: [],
+              isLoading: false,
+              loaded: true,
+            });
+          });
 
-        if (!isMounted) return;
-        if (joinRes.error) {
-          setError(joinRes.error);
-          setIsLoading(false);
-          return;
-        }
-
-        // Re-fetch latest room state once joined (captures any video_url update during initial load)
-        const latestRoom = await roomService.getRoomByCode(roomCode);
-        if (!isMounted) return;
-
-        setRole(joinRes.role);
-        setRoom(latestRoom || loadedRoom);
-
-        // Fetch current room members
-        const currentMembers = await roomService.getRoomMembers(loadedRoom.id);
-        if (isMounted) setMembers(currentMembers);
+        setRole(sessionRes.role);
+        setRoom(resolvedRoom);
+        setMembers(sessionRes.members);
       } catch (err: unknown) {
         if (isMounted) {
           setError(err instanceof Error ? err.message : 'Error entering room');
@@ -346,6 +404,15 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
         }
       )
       .on(
+        'broadcast',
+        { event: 'CHAT_MESSAGE' },
+        (msg: { payload?: unknown }) => {
+          if (isValidChatBroadcastPayload(msg?.payload, currentRoomId)) {
+            emitRoomChatBroadcast(currentRoomId, msg.payload);
+          }
+        }
+      )
+      .on(
         'postgres_changes',
         {
           event: 'DELETE',
@@ -511,12 +578,17 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
       }
     };
 
-    // Ensure the current user JWT is attached to the Realtime socket BEFORE joining the
-    // private channel so the authorization check runs against the signed-in identity.
+    // Ensure the pre-warmed user JWT is attached to the Realtime socket BEFORE joining the
+    // private channel so authorization runs immediately without duplicating auth fetches.
     void (async () => {
       try {
-        const token = await getAuthenticatedAccessToken(supabase);
-        await supabase.realtime.setAuth(token ?? null);
+        const prewarmed = realtimeAuthPromiseRef.current;
+        if (prewarmed && prewarmed.userId === user.id) {
+          await prewarmed.promise;
+        } else {
+          const token = await getAuthenticatedAccessToken(supabase);
+          await supabase.realtime.setAuth(token ?? null);
+        }
       } catch (authErr) {
         console.warn('[Syncora] Failed to refresh Realtime auth token:', authErr);
       }
@@ -813,5 +885,6 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
     toggleGuestCall,
     closeRoom,
     channel,
+    initialChatHistory,
   };
 }

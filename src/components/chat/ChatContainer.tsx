@@ -7,9 +7,17 @@ import {
   Bell,
   BellOff,
   PanelRightClose,
+  RotateCcw,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { UserIdentity } from '@/core/types/session.types';
+import {
+  InitialChatHistory,
+  ParticipantPresence,
+  RoomMember,
+} from '@/core/types/room.types';
 import { Button } from '@/components/ui/Button';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -20,6 +28,9 @@ interface ChatContainerProps {
   user: UserIdentity;
   partnerName?: string;
   channel: RealtimeChannel | null;
+  members?: RoomMember[];
+  presenceList?: ParticipantPresence[];
+  initialHistory?: InitialChatHistory;
   onCollapse?: () => void;
   voiceSection?: React.ReactNode;
 }
@@ -29,12 +40,17 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   user,
   partnerName,
   channel,
+  members,
+  presenceList,
+  initialHistory,
   onCollapse,
   voiceSection,
 }) => {
   const {
     messages,
     sendMessage,
+    retryMessage,
+    dismissFailedMessage,
     sendReaction,
     partnerTyping,
     setTyping,
@@ -43,6 +59,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     roomId,
     user,
     channel,
+    members,
+    presenceList,
+    initialHistory,
   });
 
   const [input, setInput] = useState('');
@@ -213,14 +232,46 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     </span>
                   </div>
                   <div
-                    className={`text-xs px-3.5 py-2 rounded-2xl break-words leading-relaxed ${
-                      isMe
+                    className={`text-xs px-3.5 py-2 rounded-2xl break-words leading-relaxed transition-opacity ${
+                      msg.status === 'failed'
+                        ? 'bg-[#3B181A] border border-[#F87171]/55 text-[#FDECEC] rounded-tr-xs'
+                        : isMe
                         ? 'bg-[#1E4D3C] border border-[#9670FF]/40 text-[#F7F4EC] rounded-tr-xs'
                         : 'bg-[#0E281F] border border-[#E8DDC5]/14 text-[#F7F4EC] rounded-tl-xs'
-                    }`}
+                    } ${msg.status === 'sending' ? 'opacity-80' : ''}`}
                   >
                     {msg.content}
                   </div>
+                  {isMe && msg.status === 'sending' && (
+                    <div className="flex justify-end px-1 text-[10px] text-[#CDBF9F]/60 font-mono">
+                      Saving…
+                    </div>
+                  )}
+                  {isMe && msg.status === 'failed' && (
+                    <div className="flex items-center justify-end gap-2 px-1 text-[10px] text-[#FCA5A5]">
+                      <span className="inline-flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>Failed to save</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void retryMessage(msg.id)}
+                        className="inline-flex items-center gap-1 text-[#E8DDC5] hover:text-[#F7F4EC] underline underline-offset-2 cursor-pointer"
+                      >
+                        <RotateCcw className="w-2.5 h-2.5" />
+                        <span>Retry</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => dismissFailedMessage(msg.id)}
+                        className="text-[#CDBF9F]/70 hover:text-[#F7F4EC] cursor-pointer"
+                        aria-label="Dismiss failed message"
+                        title="Dismiss"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

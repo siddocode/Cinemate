@@ -64,7 +64,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
     toggleGuestCall,
     closeRoom,
     channel,
-  } = useRoom(roomCode, initialTitle, allowCreate);
+    initialChatHistory,
+  } = useRoom(roomCode, initialTitle, allowCreate, initialVideoId);
 
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
@@ -393,6 +394,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
             user={user}
             partnerName={partnerLabel}
             channel={channel}
+            members={members}
+            presenceList={presenceList}
+            initialHistory={initialChatHistory}
             onCollapse={() => setIsChatOpen(false)}
             voiceSection={
               <VoiceCallBar

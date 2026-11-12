@@ -1,4 +1,5 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { ChatBroadcastPayload } from '@/lib/utils/chat';
 
 export interface RealtimeChatMessageRow {
   id: string;
@@ -30,13 +31,52 @@ export interface RealtimeCallSlotChange {
 }
 
 type ChatMessageListener = (row: RealtimeChatMessageRow) => void;
+type ChatBroadcastListener = (payload: ChatBroadcastPayload) => void;
 type TypingListener = (payload: RealtimeTypingPayload) => void;
 type CallSlotListener = (change: RealtimeCallSlotChange) => void;
 
 const chatMessageListeners = new Map<string, Set<ChatMessageListener>>();
+const chatBroadcastListeners = new Map<string, Set<ChatBroadcastListener>>();
 const typingListeners = new Map<string, Set<TypingListener>>();
 const callSlotListeners = new Map<string, Set<CallSlotListener>>();
 const attachedTypingChannels = new WeakSet<RealtimeChannel>();
+
+/**
+ * Registers a listener for instant `CHAT_MESSAGE` broadcasts received via the unified room channel.
+ */
+export function subscribeToRoomChatBroadcasts(
+  roomId: string,
+  listener: ChatBroadcastListener
+): () => void {
+  let set = chatBroadcastListeners.get(roomId);
+  if (!set) {
+    set = new Set();
+    chatBroadcastListeners.set(roomId, set);
+  }
+  set.add(listener);
+
+  return () => {
+    const current = chatBroadcastListeners.get(roomId);
+    if (current) {
+      current.delete(listener);
+      if (current.size === 0) {
+        chatBroadcastListeners.delete(roomId);
+      }
+    }
+  };
+}
+
+/**
+ * Dispatches a `CHAT_MESSAGE` broadcast payload from the unified room channel to listeners.
+ */
+export function emitRoomChatBroadcast(
+  roomId: string,
+  payload: ChatBroadcastPayload
+): void {
+  const listeners = chatBroadcastListeners.get(roomId);
+  if (!listeners) return;
+  listeners.forEach((listener) => listener(payload));
+}
 
 /**
  * Registers a listener for `chat_messages` INSERT events received via the unified room channel.

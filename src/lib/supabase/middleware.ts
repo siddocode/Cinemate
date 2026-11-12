@@ -2,8 +2,23 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { Database } from './database.types';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config';
+import {
+  getCachedJwks,
+  getVerifiedAuthClaims,
+  hasSupabaseAuthCookie,
+  isAuthenticatedClaims,
+} from './auth';
 
-export async function updateSession(request: NextRequest) {
+export interface UpdateSessionOptions {
+  supabaseUrl?: string;
+  publishableKey?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export async function updateSession(
+  request: NextRequest,
+  options?: UpdateSessionOptions
+) {
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -19,15 +34,32 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Allow cron or internal webhook api routes to pass without browser auth redirection
-  if (pathname.startsWith('/api/cron')) {
+  // Allow cron routes and OAuth/PKCE callback exchange to run without middleware auth gating
+  if (pathname.startsWith('/api/cron') || pathname === '/auth/callback') {
     return supabaseResponse;
   }
 
-  const supabase = createServerClient<Database>(
-    SUPABASE_URL || 'https://placeholder.supabase.co',
-    SUPABASE_PUBLISHABLE_KEY || 'placeholder-publishable-key',
-    {
+  const supabaseUrl = options?.supabaseUrl ?? SUPABASE_URL;
+  const publishableKey = options?.publishableKey ?? SUPABASE_PUBLISHABLE_KEY;
+  const isConfigured =
+    Boolean(supabaseUrl) &&
+    Boolean(publishableKey) &&
+    !supabaseUrl.includes('placeholder');
+
+  const isAuthRoute =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/auth');
+
+  const isApiRoute = pathname.startsWith('/api/');
+
+  // Fast-path: no Supabase auth session cookie on request -> unauthenticated without client/crypto work
+  const hasAuthCookie = hasSupabaseAuthCookie(request.cookies.getAll());
+  let isAuthenticated = false;
+
+  if (isConfigured && hasAuthCookie) {
+    const supabase = createServerClient<Database>(supabaseUrl, publishableKey, {
+      ...(options?.fetchImpl ? { global: { fetch: options.fetchImpl } } : {}),
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -39,37 +71,25 @@ export async function updateSession(request: NextRequest) {
           supabaseResponse = NextResponse.next({
             request,
           });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+          cookiesToSet.forEach(({ name, value, options: cookieOptions }) =>
+            supabaseResponse.cookies.set(name, value, cookieOptions)
           );
         },
       },
-    }
-  );
+    });
 
-  // Authenticate user via Supabase Auth server (validates & refreshes session cookie)
-  let user = null;
-  if (
-    SUPABASE_URL &&
-    SUPABASE_PUBLISHABLE_KEY &&
-    !SUPABASE_URL.includes('placeholder')
-  ) {
+    // Verify JWT claims locally via cached JWKS WebCrypto (refreshing expiring sessions as needed)
     try {
-      const { data } = await supabase.auth.getUser();
-      user = data.user;
+      const jwks = await getCachedJwks(supabaseUrl, publishableKey, options?.fetchImpl);
+      const verified = await getVerifiedAuthClaims(supabase, {
+        jwks,
+        supabaseUrl,
+      });
+      isAuthenticated = isAuthenticatedClaims(verified?.claims);
     } catch {
-      user = null;
+      isAuthenticated = false;
     }
   }
-
-  const isAuthRoute =
-    pathname.startsWith('/login') ||
-    pathname.startsWith('/register') ||
-    pathname.startsWith('/auth');
-
-  const isCallbackRoute = pathname === '/auth/callback';
-  const isApiRoute = pathname.startsWith('/api/');
-  const isAuthenticated = Boolean(user && !user.is_anonymous);
 
   // 1a. Unauthenticated API calls receive JSON 401 rather than an HTML login redirect
   if (!isAuthenticated && isApiRoute) {
@@ -87,7 +107,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // 2. Authenticated users visiting login/register/auth -> redirect to destination or home
-  if (isAuthenticated && isAuthRoute && !isCallbackRoute) {
+  if (isAuthenticated && isAuthRoute) {
     const redirectParam = request.nextUrl.searchParams.get('redirect');
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = redirectParam && redirectParam.startsWith('/') ? redirectParam : '/';

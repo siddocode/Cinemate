@@ -1,11 +1,23 @@
 import { getSupabaseBrowserClient } from '../supabase/client';
 import { isSupabaseConfigured } from '../supabase/config';
-import { Room, RoomMember, RoomRole, ChatMessage, UserRoomSummary } from '@/core/types/room.types';
+import {
+  Room,
+  RoomMember,
+  RoomRole,
+  RoomSessionResult,
+  ChatMessage,
+  UserRoomSummary,
+} from '@/core/types/room.types';
 import { UserIdentity } from '@/core/types/session.types';
 import { VideoSourceType } from '@/core/types/player.types';
 import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
 import { Database } from '../supabase/database.types';
 import { bandwidthService } from './bandwidthService';
+import {
+  ChatPersistenceError,
+  generateChatMessageId,
+  isRetryableChatError,
+} from '@/lib/utils/chat';
 
 type RoomRow = Database['public']['Tables']['rooms']['Row'];
 
@@ -37,6 +49,62 @@ const devMessages = new Map<string, ChatMessage[]>();
 // Deduplicate concurrent room lookups/creations (e.g. React Strict Mode double-mount)
 const inFlightCreates = new Map<string, Promise<{ room: Room | null; error?: string }>>();
 const inFlightGetOrCreate = new Map<string, Promise<{ room: Room | null; error?: string }>>();
+const inFlightSessions = new Map<string, Promise<RoomSessionResult>>();
+
+type RawRpcMember = {
+  id: string;
+  room_id: string;
+  user_id: string;
+  username: string | null;
+  role: string;
+  joined_at: string;
+  last_seen_at: string;
+};
+
+export function parseRoomSessionPayload(raw: unknown): RoomSessionResult {
+  if (!raw || typeof raw !== 'object') {
+    return { room: null, role: 'viewer', members: [], notFound: true };
+  }
+
+  const payload = raw as {
+    room?: RoomRow | null;
+    role?: string;
+    members?: RawRpcMember[];
+    created?: boolean;
+  };
+
+  if (!payload.room) {
+    return { room: null, role: 'viewer', members: [], notFound: true };
+  }
+
+  const members: RoomMember[] = Array.isArray(payload.members)
+    ? payload.members.map((m) => ({
+        id: m.id,
+        roomId: m.room_id,
+        userId: m.user_id,
+        username: m.username || 'Viewer',
+        role: (m.role as RoomRole) || 'viewer',
+        joinedAt: m.joined_at,
+        lastSeenAt: m.last_seen_at,
+      }))
+    : [];
+
+  return {
+    room: mapRoomRowToRoom(payload.room),
+    role: (payload.role as RoomRole) || 'viewer',
+    members,
+    created: Boolean(payload.created),
+  };
+}
+
+function isMissingRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    Boolean(error.message?.includes('Could not find the function'))
+  );
+}
 
 function clearTrackedRoomUploads(roomId: string): void {
   const maybeFn = (
@@ -131,25 +199,224 @@ export const roomService = {
   },
 
   /**
-   * Ensures the user's profile exists in database.
+   * Atomically creates (or recovers) a room with initial video metadata, joins the host,
+   * and returns room details + participants in a single database RPC round-trip.
    */
-  async ensureProfile(user: UserIdentity): Promise<void> {
-    if (!isSupabaseConfigured() || !user.id) return;
-    try {
-      const supabase = getSupabaseBrowserClient();
+  async createRoomSession(params: {
+    code: string;
+    title: string;
+    host: UserIdentity;
+    videoUrl?: string;
+    videoType?: VideoSourceType;
+  }): Promise<RoomSessionResult> {
+    const normalizedCode = params.code.trim().toUpperCase();
+    const videoUrl = params.videoUrl || '';
+    const videoType = params.videoType || 'youtube';
 
-      await supabase.from('profiles').upsert(
-        {
-          id: user.id,
-          username: user.username,
-          is_guest: user.isGuest,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      );
-    } catch {
-      // Table might not be migrated yet in Supabase
+    if (!params.host.id) {
+      return {
+        room: null,
+        role: 'viewer',
+        members: [],
+        error: 'You must be signed in to create a room.',
+      };
     }
+
+    if (!isSupabaseConfigured()) {
+      const existingDev = devRooms.get(normalizedCode);
+      const room = existingDev || this.createDevRoom({ ...params, code: normalizedCode }).room;
+      if (existingDev && !existingDev.videoUrl && videoUrl && existingDev.hostId === params.host.id) {
+        existingDev.videoUrl = videoUrl;
+        existingDev.videoType = videoType;
+      }
+      const joinRes = this.joinDevRoom({ roomId: room.id, user: params.host });
+      return {
+        room,
+        role: joinRes.role,
+        members: devMembers.get(room.id) || [],
+        created: !existingDev,
+        error: joinRes.error,
+      };
+    }
+
+    const dedupeKey = `create:${normalizedCode}:${params.host.id}`;
+    const existingPromise = inFlightSessions.get(dedupeKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const promise = (async (): Promise<RoomSessionResult> => {
+      try {
+        const supabase = getSupabaseBrowserClient();
+        const { data, error } = await supabase.rpc('create_room_session', {
+          p_code: normalizedCode,
+          p_title: params.title,
+          p_video_url: videoUrl,
+          p_video_type: videoType,
+          p_username: params.host.username,
+          p_is_guest: params.host.isGuest,
+        });
+
+        if (error) {
+          if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
+            const devRes = this.createDevRoom({ ...params, code: normalizedCode });
+            return {
+              room: devRes.room,
+              role: 'host',
+              members: devMembers.get(devRes.room.id) || [],
+              created: true,
+            };
+          }
+
+          if (isMissingRpcError(error)) {
+            // Backwards-compatible fallback if migration 011 has not been applied yet
+            const roomRes = await this.getOrCreateRoom({ ...params, code: normalizedCode });
+            if (!roomRes.room) {
+              return { room: null, role: 'viewer', members: [], error: roomRes.error };
+            }
+            const joinRes = await this.joinRoom({
+              roomId: roomRes.room.id,
+              user: params.host,
+              hostId: roomRes.room.hostId,
+            });
+            if (joinRes.error) {
+              return { room: null, role: 'viewer', members: [], error: joinRes.error };
+            }
+            const members = await this.getRoomMembers(roomRes.room.id);
+            return { room: roomRes.room, role: joinRes.role, members };
+          }
+
+          return {
+            room: null,
+            role: 'viewer',
+            members: [],
+            error: error.message || 'Failed to create room.',
+          };
+        }
+
+        return parseRoomSessionPayload(data);
+      } catch (err: unknown) {
+        return {
+          room: null,
+          role: 'viewer',
+          members: [],
+          error: err instanceof Error ? err.message : 'Unknown error creating room',
+        };
+      }
+    })().finally(() => {
+      inFlightSessions.delete(dedupeKey);
+    });
+
+    inFlightSessions.set(dedupeKey, promise);
+    return promise;
+  },
+
+  /**
+   * Atomically looks up a room by code, enforces capacity & kicked restrictions,
+   * joins the participant, and returns room details + members in one RPC round-trip.
+   */
+  async joinRoomSession(params: {
+    code: string;
+    user: UserIdentity;
+  }): Promise<RoomSessionResult> {
+    const normalizedCode = params.code.trim().toUpperCase();
+
+    if (!params.user.id) {
+      return {
+        room: null,
+        role: 'viewer',
+        members: [],
+        error: 'You must be signed in to join a room.',
+      };
+    }
+
+    if (!isSupabaseConfigured()) {
+      const devRoom = devRooms.get(normalizedCode);
+      if (!devRoom) {
+        return { room: null, role: 'viewer', members: [], notFound: true };
+      }
+      const joinRes = this.joinDevRoom({ roomId: devRoom.id, user: params.user });
+      if (joinRes.error) {
+        return { room: null, role: 'viewer', members: [], error: joinRes.error };
+      }
+      return {
+        room: devRoom,
+        role: joinRes.role,
+        members: devMembers.get(devRoom.id) || [],
+      };
+    }
+
+    const dedupeKey = `join:${normalizedCode}:${params.user.id}`;
+    const existingPromise = inFlightSessions.get(dedupeKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const promise = (async (): Promise<RoomSessionResult> => {
+      try {
+        const supabase = getSupabaseBrowserClient();
+        const { data, error } = await supabase.rpc('join_room_session', {
+          p_code: normalizedCode,
+          p_username: params.user.username,
+          p_is_guest: params.user.isGuest,
+        });
+
+        if (error) {
+          if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
+            const devRoom = devRooms.get(normalizedCode);
+            if (!devRoom) {
+              return { room: null, role: 'viewer', members: [], notFound: true };
+            }
+            const joinRes = this.joinDevRoom({ roomId: devRoom.id, user: params.user });
+            return {
+              room: joinRes.error ? null : devRoom,
+              role: joinRes.role,
+              members: devMembers.get(devRoom.id) || [],
+              error: joinRes.error,
+            };
+          }
+
+          if (isMissingRpcError(error)) {
+            // Backwards-compatible fallback if migration 011 has not been applied yet
+            const loadedRoom = await this.getRoomByCode(normalizedCode);
+            if (!loadedRoom) {
+              return { room: null, role: 'viewer', members: [], notFound: true };
+            }
+            const joinRes = await this.joinRoom({
+              roomId: loadedRoom.id,
+              user: params.user,
+              hostId: loadedRoom.hostId,
+            });
+            if (joinRes.error) {
+              return { room: null, role: 'viewer', members: [], error: joinRes.error };
+            }
+            const members = await this.getRoomMembers(loadedRoom.id);
+            return { room: loadedRoom, role: joinRes.role, members };
+          }
+
+          return {
+            room: null,
+            role: 'viewer',
+            members: [],
+            error: error.message || 'Failed to join room.',
+          };
+        }
+
+        return parseRoomSessionPayload(data);
+      } catch (err: unknown) {
+        return {
+          room: null,
+          role: 'viewer',
+          members: [],
+          error: err instanceof Error ? err.message : 'Error entering room',
+        };
+      }
+    })().finally(() => {
+      inFlightSessions.delete(dedupeKey);
+    });
+
+    inFlightSessions.set(dedupeKey, promise);
+    return promise;
   },
 
   /**
@@ -214,7 +481,6 @@ export const roomService = {
 
     const promise = (async (): Promise<{ room: Room | null; error?: string }> => {
       try {
-        await this.ensureProfile(params.host);
         const supabase = getSupabaseBrowserClient();
 
         const { data: roomData, error: roomError } = await supabase
@@ -380,7 +646,6 @@ export const roomService = {
     }
 
     try {
-      await this.ensureProfile(params.user);
       const supabase = getSupabaseBrowserClient();
 
       // Check if user was previously kicked from this room (rejoin allowed as view-only, never Co-Host/control)
@@ -658,32 +923,38 @@ export const roomService = {
   },
 
   /**
-   * Sends a new chat message to the room.
+   * Sends a new chat message to the room (persists to PostgreSQL with client-generated UUID).
    */
   async sendChatMessage(params: {
+    id?: string;
     roomId: string;
     userId: string;
     username: string;
     content: string;
     type?: 'chat' | 'system';
+    createdAt?: string;
   }): Promise<ChatMessage | null> {
     const messageType = params.type || 'chat';
-    const now = new Date().toISOString();
+    const messageId = params.id || generateChatMessageId();
+    const now = params.createdAt || new Date().toISOString();
 
     if (!isSupabaseConfigured()) {
       const newMsg: ChatMessage = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`,
+        id: messageId,
         roomId: params.roomId,
         userId: params.userId,
         username: params.username,
         content: params.content,
         type: messageType,
         createdAt: now,
+        status: 'sent',
       };
 
       const existing = devMessages.get(params.roomId) || [];
-      existing.push(newMsg);
-      devMessages.set(params.roomId, existing);
+      if (!existing.some((m) => m.id === messageId)) {
+        existing.push(newMsg);
+        devMessages.set(params.roomId, existing);
+      }
       return newMsg;
     }
 
@@ -692,57 +963,73 @@ export const roomService = {
       const { data, error } = await supabase
         .from('chat_messages')
         .insert({
+          id: messageId,
           room_id: params.roomId,
           user_id: params.userId,
           content: params.content,
           type: messageType,
         })
-        .select('*, profiles(username)')
+        .select('id, room_id, user_id, content, type, created_at')
         .single();
 
       if (error || !data) {
         if (error?.code === 'PGRST205' || error?.message?.includes('schema cache')) {
           const newMsg: ChatMessage = {
-            id: crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`,
+            id: messageId,
             roomId: params.roomId,
             userId: params.userId,
             username: params.username,
             content: params.content,
             type: messageType,
             createdAt: now,
+            status: 'sent',
           };
           const existing = devMessages.get(params.roomId) || [];
-          existing.push(newMsg);
-          devMessages.set(params.roomId, existing);
+          if (!existing.some((m) => m.id === messageId)) {
+            existing.push(newMsg);
+            devMessages.set(params.roomId, existing);
+          }
           return newMsg;
         }
-        console.warn('[Syncora] Send chat message error:', error);
-        return null;
+
+        // Idempotent retry recovery: row with same client UUID was already committed
+        if (error?.code === '23505') {
+          return {
+            id: messageId,
+            roomId: params.roomId,
+            userId: params.userId,
+            username: params.username,
+            content: params.content,
+            type: messageType,
+            createdAt: now,
+            status: 'sent',
+          };
+        }
+
+        const retryable = isRetryableChatError(error);
+        throw new ChatPersistenceError(
+          error?.message || 'Failed to save message.',
+          retryable,
+          error?.code
+        );
       }
 
-      type MessageWithProfile = {
-        id: string;
-        room_id: string;
-        user_id: string;
-        content: string;
-        type: 'chat' | 'system';
-        created_at: string;
-        profiles: { username: string } | null;
-      };
-
-      const msg = data as unknown as MessageWithProfile;
       return {
-        id: msg.id,
-        roomId: msg.room_id,
-        userId: msg.user_id,
-        username: msg.profiles?.username || params.username,
-        content: msg.content,
-        type: msg.type,
-        createdAt: msg.created_at,
+        id: data.id,
+        roomId: data.room_id,
+        userId: data.user_id,
+        username: params.username,
+        content: data.content,
+        type: data.type,
+        createdAt: data.created_at,
+        status: 'sent',
       };
     } catch (err) {
-      console.warn('[Syncora] Error sending message:', err);
-      return null;
+      if (err instanceof ChatPersistenceError) {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : 'Failed to save message.';
+      throw new ChatPersistenceError(message, true);
     }
   },
 

@@ -182,3 +182,33 @@
 - [x] Add Phase 12 tests (`tests/voice-call-phase12_mesh_and_ducking.test.mjs`) and update `CURRENT_STATE.md` & `TASKS.md`.
 - [ ] User manual SQL migration: run `supabase/migrations/008_four_way_voice_mesh.sql`, `supabase/migrations/009_host_leave_ends_voice_call.sql`, and `supabase/migrations/010_voice_call_initiation_permissions.sql` (or updated `supabase/full_setup.sql`) in the Supabase SQL Editor.
 
+---
+
+## Phase 13 — Performance Optimization
+### Optimization 1 — Instant Chat
+- [x] Broadcast `CHAT_MESSAGE` immediately over the authorized `room:{roomId}` private channel (`useRoom.ts`, `roomRealtimeBus.ts`, `useChat.ts`).
+- [x] Persist messages to PostgreSQL independently with client-generated UUIDs (`generateChatMessageId()`, `roomService.sendChatMessage` without `profiles` join).
+- [x] Deduplicate Broadcast, `postgres_changes`, optimistic state, and initial history (`upsertChatMessage()`, `mergeChatHistory()`).
+- [x] Eliminate per-message `profiles` lookups using cached `members` + `presenceList` participant names (`syncParticipantNameCache()`, `resolveCachedSenderName()`).
+- [x] Handle persistence failures, bounded transient retries (`23505` idempotency, `ChatPersistenceError`), and `'sending' | 'sent' | 'failed'` UI states (`ChatContainer.tsx`).
+- [x] Add regression tests (`tests/instant-chat.test.mjs`) and verify TypeScript, ESLint, security tests, full test suite, and production build.
+
+### Optimization 2 — Faster Room Creation and Joining
+- [x] Inspect existing SQL constraints, triggers, and permissions (`001`–`010`, `full_setup.sql`).
+- [x] Implement atomic `create_room_session` and `join_room_session` RPCs (with shared `_finalize_room_session`, initial video params, advisory lock capacity enforcement, kicked view-only guard, and strict `REVOKE`/`GRANT`) in `supabase/migrations/011_atomic_room_session_rpcs.sql` and `supabase/full_setup.sql`.
+- [x] Update `database.types.ts`, `room.types.ts`, `roomService.ts`, `useRoom.ts`, and `RoomView.tsx` to use 1-round-trip `createRoomSession` / `joinRoomSession` and remove redundant `ensureProfile`, `getRoomByCode`, `joinRoom`, `getRoomMembers`, and post-create `updateVideo` calls.
+- [x] Add regression tests (`tests/room-session-rpc.test.mjs`) and verify TypeScript, ESLint, security tests, full test suite, and production build.
+- [ ] User manual SQL migration: apply `supabase/migrations/011_atomic_room_session_rpcs.sql` (or updated `supabase/full_setup.sql`) in Supabase SQL Editor.
+
+### Optimization 3 — Faster Authentication
+- [x] Audit `updateSession` middleware and API route authentication calls (`src/lib/supabase/middleware.ts`, `src/app/api/**`).
+- [x] Implement verified JWT claims validation (`supabase.auth.getClaims()`) with module-scoped 10-minute deduplicated JWKS caching, key-rotation invalidation, `/auth/callback` early exit, and missing-cookie fast-path in `src/lib/supabase/auth.ts` and `src/lib/supabase/middleware.ts`.
+- [x] Preserve `supabase.auth.getUser()` server-side checks on privileged/destructive and external-secret API routes (`DELETE /api/rooms/[id]`, `DELETE /api/rooms/[id]/video`, `POST /api/rooms/[id]/call/ice-servers`, `POST /api/rooms/[id]/call/leave`).
+- [x] Add cryptographic & security regression tests (`tests/auth-performance.test.mjs`) and benchmark loopback latency/request counts.
+
+### Optimization 4 — Faster Initial Loading
+- [x] Seed `SessionProvider` with server-resolved verified claims (`getServerInitialSession` in `src/lib/supabase/server.ts`, `mapClaimsToUserIdentity` in `src/lib/supabase/auth.ts`, `src/app/layout.tsx`, and `src/context/SessionContext.tsx`) to remove the client auth startup waterfall.
+- [x] Fetch independent dashboard shelves concurrently via `Promise.all` (`src/lib/services/dashboardService.ts`, `src/app/page.tsx`, `RecentRoomsSection.tsx`, `FavoritesSection.tsx`).
+- [x] Parallelize room initialization, Realtime JWT pre-warm, and eager chat-history loading where RLS permits (`src/app/room/[code]/page.tsx`, `src/hooks/useRoom.ts`, `src/components/room/RoomView.tsx`, `src/components/chat/ChatContainer.tsx`, `src/hooks/useChat.ts`).
+- [x] Add regression tests (`tests/initial-loading.test.mjs`), run benchmark measurements, and verify TypeScript, ESLint, security tests, full test suite, and production build.
+

@@ -15,20 +15,36 @@ import {
 interface FavoritesSectionProps {
   isExternalNavigating?: boolean;
   onStartNavigation?: () => void;
+  externalFavorites?: FavoriteItem[];
+  isExternalLoading?: boolean;
+  onFavoritesChange?: React.Dispatch<React.SetStateAction<FavoriteItem[]>>;
 }
 
 export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
   isExternalNavigating = false,
   onStartNavigation,
+  externalFavorites,
+  isExternalLoading,
+  onFavoritesChange,
 }) => {
   const router = useRouter();
   const { user, isAuthenticated } = useSession();
-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [internalFavorites, setInternalFavorites] = useState<FavoriteItem[]>([]);
+  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [removingVideoId, setRemovingVideoId] = useState<string | null>(null);
   const [launchingVideoId, setLaunchingVideoId] = useState<string | null>(null);
 
+  const usesExternalData = externalFavorites !== undefined;
+  const favorites = usesExternalData ? externalFavorites : internalFavorites;
+  const isLoading = usesExternalData
+    ? Boolean(isExternalLoading)
+    : isInternalLoading;
+
   useEffect(() => {
+    if (usesExternalData) {
+      return;
+    }
+
     if (!isAuthenticated || !user.id) {
       return;
     }
@@ -39,21 +55,21 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
       .getFavorites(user.id)
       .then((items) => {
         if (isMounted) {
-          setFavorites(items);
-          setIsLoading(false);
+          setInternalFavorites(items);
+          setIsInternalLoading(false);
         }
       })
       .catch(() => {
         if (isMounted) {
-          setFavorites([]);
-          setIsLoading(false);
+          setInternalFavorites([]);
+          setIsInternalLoading(false);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [user.id, isAuthenticated]);
+  }, [user.id, isAuthenticated, usesExternalData]);
 
   const displayedFavorites = isAuthenticated ? favorites : [];
 
@@ -81,7 +97,8 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
     setRemovingVideoId(videoId);
     try {
       await favoriteService.removeFavorite(user.id, videoId);
-      setFavorites((prev) => prev.filter((f) => f.videoId !== videoId));
+      const updateFavorites = onFavoritesChange ?? setInternalFavorites;
+      updateFavorites((prev) => prev.filter((f) => f.videoId !== videoId));
     } finally {
       setRemovingVideoId((prev) => (prev === videoId ? null : prev));
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -10,6 +10,9 @@ import {
   Link2,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
+import { fetchDashboardData } from '@/lib/services/dashboardService';
+import { FavoriteItem } from '@/lib/services/favoriteService';
+import { UserRoomSummary } from '@/core/types/room.types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -39,6 +42,40 @@ export default function HomePage() {
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState('');
   const [navigatingAction, setNavigatingAction] = useState<'create' | 'join' | 'shelf' | null>(null);
+  const [recentRooms, setRecentRooms] = useState<UserRoomSummary[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const [loadedDashboardUserId, setLoadedDashboardUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user.id) {
+      return;
+    }
+
+    let isMounted = true;
+    const targetUserId = user.id;
+
+    fetchDashboardData(targetUserId)
+      .then((data) => {
+        if (!isMounted) return;
+        setRecentRooms(data.recentRooms);
+        setFavorites(data.favorites);
+        setLoadedDashboardUserId(targetUserId);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setRecentRooms([]);
+        setFavorites([]);
+        setLoadedDashboardUserId(targetUserId);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated, user.id]);
+
+  const isDashboardLoading = Boolean(
+    isAuthenticated && user.id && loadedDashboardUserId !== user.id
+  );
 
   const isLobbyBusy = navigatingAction !== null;
   const { stage: createButtonStage } = useLoadingStages(
@@ -255,10 +292,16 @@ export default function HomePage() {
         <RecentRoomsSection
           isExternalNavigating={isLobbyBusy}
           onStartNavigation={() => setNavigatingAction('shelf')}
+          externalRooms={isAuthenticated && loadedDashboardUserId === user.id ? recentRooms : []}
+          isExternalLoading={isDashboardLoading}
+          onRoomsChange={setRecentRooms}
         />
         <FavoritesSection
           isExternalNavigating={isLobbyBusy}
           onStartNavigation={() => setNavigatingAction('shelf')}
+          externalFavorites={isAuthenticated && loadedDashboardUserId === user.id ? favorites : []}
+          isExternalLoading={isDashboardLoading}
+          onFavoritesChange={setFavorites}
         />
       </div>
 

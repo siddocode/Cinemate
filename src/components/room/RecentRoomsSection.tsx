@@ -29,20 +29,38 @@ function formatRelativeDate(isoDate: string): string {
 interface RecentRoomsSectionProps {
   isExternalNavigating?: boolean;
   onStartNavigation?: () => void;
+  externalRooms?: UserRoomSummary[];
+  isExternalLoading?: boolean;
+  onRoomsChange?: React.Dispatch<React.SetStateAction<UserRoomSummary[]>>;
 }
 
 export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
   isExternalNavigating = false,
   onStartNavigation,
+  externalRooms,
+  isExternalLoading,
+  onRoomsChange,
 }) => {
   const router = useRouter();
   const { user, isAuthenticated } = useSession();
-  const [rooms, setRooms] = useState<UserRoomSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [internalRooms, setInternalRooms] = useState<UserRoomSummary[]>([]);
+  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
   const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
 
+  const usesExternalData = externalRooms !== undefined;
+  const rooms = usesExternalData
+    ? externalRooms.filter((r) => r.hostId === user.id)
+    : internalRooms;
+  const isLoading = usesExternalData
+    ? Boolean(isExternalLoading)
+    : isInternalLoading;
+
   useEffect(() => {
+    if (usesExternalData) {
+      return;
+    }
+
     if (!isAuthenticated || !user.id) {
       return;
     }
@@ -52,21 +70,21 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
       .getUserRooms(user.id)
       .then((items) => {
         if (isMounted) {
-          setRooms(items.filter((r) => r.hostId === user.id));
-          setIsLoading(false);
+          setInternalRooms(items.filter((r) => r.hostId === user.id));
+          setIsInternalLoading(false);
         }
       })
       .catch(() => {
         if (isMounted) {
-          setRooms([]);
-          setIsLoading(false);
+          setInternalRooms([]);
+          setIsInternalLoading(false);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [user.id, isAuthenticated]);
+  }, [user.id, isAuthenticated, usesExternalData]);
 
   const isNavigating = isExternalNavigating || openingRoomId !== null;
   const { stage: reopenButtonStage } = useLoadingStages(
@@ -93,7 +111,8 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
       const isHost = room.hostId === user.id;
       const removed = await roomService.leaveOrDeleteRoom(room.id, user.id, isHost);
       if (removed) {
-        setRooms((prev) => prev.filter((r) => r.id !== room.id));
+        const updateRooms = onRoomsChange ?? setInternalRooms;
+        updateRooms((prev) => prev.filter((r) => r.id !== room.id));
       }
     } finally {
       setDeletingRoomId((prev) => (prev === room.id ? null : prev));

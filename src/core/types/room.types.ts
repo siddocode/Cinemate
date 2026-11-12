@@ -40,6 +40,8 @@ export interface RoomMember {
   lastSeenAt: string;
 }
 
+export type ChatMessageStatus = 'sending' | 'sent' | 'failed';
+
 export interface ChatMessage {
   id: string;
   roomId: string;
@@ -48,6 +50,8 @@ export interface ChatMessage {
   content: string;
   type: 'chat' | 'system';
   createdAt: string;
+  status?: ChatMessageStatus;
+  errorMessage?: string;
 }
 
 export type ParticipantClientState = 'ready' | 'buffering' | 'playing' | 'paused' | 'idle';
@@ -70,6 +74,22 @@ export interface DuoStatus {
 export interface UserRoomSummary extends Room {
   userRole: RoomRole;
   joinedAt: string;
+}
+
+export interface RoomSessionResult {
+  room: Room | null;
+  role: RoomRole;
+  members: RoomMember[];
+  notFound?: boolean;
+  created?: boolean;
+  error?: string;
+}
+
+export interface InitialChatHistory {
+  roomId: string;
+  messages: ChatMessage[];
+  isLoading: boolean;
+  loaded: boolean;
 }
 
 

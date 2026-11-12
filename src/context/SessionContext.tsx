@@ -2,8 +2,10 @@
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -76,16 +78,20 @@ export const sessionStore = {
     return isAuthInitialized;
   },
 
-  async init() {
+  async init(seedUser?: UserIdentity | null) {
     if (typeof window === 'undefined') return;
     if (initPromise) return initPromise;
+
+    if (seedUser?.id && !currentSession.id) {
+      setSessionIfChanged(seedUser);
+    }
 
     initPromise = (async () => {
       if (isSupabaseConfigured()) {
         try {
           const supabase = getSupabaseBrowserClient();
 
-          // 1. Check existing verified session
+          // 1. Reconcile client SDK session & refresh tokens cleanly in background
           const { data: sessionData } = await supabase.auth.getSession();
           const authUser = sessionData.session?.user;
 
@@ -137,6 +143,8 @@ export const sessionStore = {
           console.warn('[Syncora] Auth initialization check error:', authErr);
           setSessionIfChanged(UNAUTHENTICATED_USER);
         }
+      } else if (seedUser?.id) {
+        setSessionIfChanged(seedUser);
       } else {
         setSessionIfChanged(UNAUTHENTICATED_USER);
       }
@@ -357,17 +365,34 @@ const defaultContext: SessionContextType = {
 
 const SessionContext = createContext<SessionContextType>(defaultContext);
 
-export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const user = useSyncExternalStore(
+export interface SessionProviderProps {
+  children: React.ReactNode;
+  initialUser?: UserIdentity | null;
+  isServerInitialized?: boolean;
+}
+
+export function SessionProvider({
+  children,
+  initialUser = null,
+  isServerInitialized = false,
+}: SessionProviderProps) {
+  const seedUser = useMemo(
+    () => initialUser ?? UNAUTHENTICATED_USER,
+    [initialUser]
+  );
+
+  const getServerSnapshot = useCallback(() => seedUser, [seedUser]);
+
+  const storeUser = useSyncExternalStore(
     sessionStore.subscribe,
     sessionStore.getSnapshot,
-    sessionStore.getServerSnapshot
+    getServerSnapshot
   );
 
   const [isClientReady, setIsClientReady] = useState(false);
 
   useEffect(() => {
-    sessionStore.init().finally(() => {
+    sessionStore.init(seedUser).finally(() => {
       setIsClientReady(true);
     });
 
@@ -395,10 +420,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [seedUser]);
 
+  const user = sessionStore.getIsInitialized() ? storeUser : seedUser;
   const isAuthenticated = Boolean(user.id && !user.isGuest);
-  const isInitialized = isClientReady && sessionStore.getIsInitialized();
+  const isInitialized =
+    isServerInitialized ||
+    Boolean(initialUser?.id) ||
+    (isClientReady && sessionStore.getIsInitialized());
 
   return (
     <SessionContext.Provider

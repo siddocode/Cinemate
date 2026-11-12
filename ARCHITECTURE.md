@@ -283,3 +283,40 @@ sequenceDiagram
 
 ### 7.3 Independent Lifecycle & Non-Obstructive UI
 - [`useCall.ts`](file:///home/sid/Desktop/Cinemate/src/hooks/useCall.ts) and the remote `<audio>` element live in [`RoomView.tsx`](file:///home/sid/Desktop/Cinemate/src/components/room/RoomView.tsx) outside [`UniversalPlayer.tsx`](file:///home/sid/Desktop/Cinemate/src/components/player/UniversalPlayer.tsx), ensuring video source switches, seeks, pauses, and player remounts never interrupt voice calls.
+
+---
+
+## 8. Instant Chat & Hybrid Delivery (Phase 13 — Optimization 1)
+
+To eliminate PostgreSQL WAL + per-message profile query latency on the hot chat path while preserving durable message history:
+- **Dual-Path Delivery**: [`useChat.ts`](file:///home/sid/Desktop/Cinemate/src/hooks/useChat.ts) generates a client UUIDv4 (`generateChatMessageId()`) and broadcasts `CHAT_MESSAGE` immediately over the already-authorized private `room:{roomId}` channel (enforced by `realtime.messages` RLS via `can_access_room_topic()`), while persisting the row to `public.chat_messages` independently (`roomService.sendChatMessage` with explicit `id` and no `profiles` join).
+- **Idempotent Deduplication**: [`roomRealtimeBus.ts`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/roomRealtimeBus.ts) dispatches both `CHAT_MESSAGE` broadcasts and `postgres_changes` `INSERT` events; [`upsertChatMessage()`](file:///home/sid/Desktop/Cinemate/src/lib/utils/chat.ts) deduplicates by `id` across optimistic state, Broadcast, Postgres Changes, and initial history merge (`mergeChatHistory()`).
+- **Cached Participant Identities**: `useChat` populates an in-memory `Map<string, string>` from `members`, `presenceList`, `user`, and initial history (`syncParticipantNameCache()`), avoiding per-message `profiles` queries in the hot path (retaining only a single-flight fallback lookup for uncached historical/departed senders).
+- **Resilience & Optimistic States**: `ChatMessage.status` tracks `'sending' | 'sent' | 'failed'`. Transient persistence errors automatically retry with bounded backoff (`400ms`, `1200ms`), `23505` duplicate-key retries resolve idempotently as `'sent'`, and persistent failures expose inline Retry / Dismiss controls in [`ChatContainer.tsx`](file:///home/sid/Desktop/Cinemate/src/components/chat/ChatContainer.tsx).
+
+---
+
+## 9. Atomic Room Creation & Joining RPCs (Phase 13 — Optimization 2)
+
+To eliminate the sequential HTTP waterfall on room entry while keeping all server-side capacity, rate-limit, and authorization checks transactional:
+- **Single-Round-Trip RPCs**: [`011_atomic_room_session_rpcs.sql`](file:///home/sid/Desktop/Cinemate/supabase/migrations/011_atomic_room_session_rpcs.sql) (mirrored into [`full_setup.sql`](file:///home/sid/Desktop/Cinemate/supabase/full_setup.sql)) defines `create_room_session` and `join_room_session` backed by internal `_finalize_room_session`.
+- **Transactional Guarantees**: Both RPCs derive identity strictly from `auth.uid()`, conditionally sync `profiles` only when `username` or `is_guest` changed, include initial `video_url`/`video_type` directly during `INSERT INTO public.rooms`, handle `23505` concurrent creation races, serialize joins with `pg_advisory_xact_lock`, enforce the 4-member cap (`ROOM_FULL`) and `kicked_user_ids` view-only lock, and return `{ room, role, members }` JSONB in a single response.
+- **Client Integration**: [`roomService.ts`](file:///home/sid/Desktop/Cinemate/src/lib/services/roomService.ts) exposes deduplicated `createRoomSession` and `joinRoomSession` (with `PGRST202`/`42883` fallback until `011` is applied), and [`useRoom.ts`](file:///home/sid/Desktop/Cinemate/src/hooks/useRoom.ts) / [`RoomView.tsx`](file:///home/sid/Desktop/Cinemate/src/components/room/RoomView.tsx) pass `initialVideoId` into room creation directly.
+
+---
+
+## 10. Verified JWT Claims Auth Middleware (Phase 13 — Optimization 3)
+
+To remove per-request `/auth/v1/user` HTTP round-trips in Next.js Middleware while preserving cryptographic authentication and strict server-side authorization:
+- **Verified Local JWT Verification**: [`auth.ts`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/auth.ts) + [`middleware.ts`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/middleware.ts) (`updateSession`) replace per-request `supabase.auth.getUser()` calls with `supabase.auth.getClaims()` backed by a module-scoped 10-minute deduplicated JWKS cache (`getCachedJwks()`, matching GoTrue `JWKS_TTL`), automatically refreshing expiring sessions via `@supabase/ssr` and invalidating stale JWKS upon `kid` key rotation.
+- **Unauthenticated & Callback Fast-Paths**: Requests without Supabase session cookies (`hasSupabaseAuthCookie()`, excluding PKCE `code-verifier` cookies) and `/auth/callback` / `/api/cron` bypass `createServerClient` initialization and cryptographic verification entirely while keeping exact `401` JSON API responses and `/login?redirect=...` redirects intact.
+- **Defense in Depth**: Mutating/privileged API routes (`DELETE /api/rooms/[id]`, `DELETE /api/rooms/[id]/video`, `POST /api/rooms/[id]/call/ice-servers`, and `POST /api/rooms/[id]/call/leave`) retain live `supabase.auth.getUser()` verification.
+
+---
+
+## 11. Server-Seeded Initial Loading & Concurrent Fetching (Phase 13 — Optimization 4)
+
+To eliminate client-side auth waterfalls and serialize data fetches cleanly without bypassing RLS:
+- **Server-Resolved Initial Session**: [`RootLayout`](file:///home/sid/Desktop/Cinemate/src/app/layout.tsx) calls [`getServerInitialSession()`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/server.ts) (using `hasSupabaseAuthCookie()`, `getCachedJwks()`, `getVerifiedAuthClaims()`, and `mapClaimsToUserIdentity()`) and passes `initialUser` + `isServerInitialized` directly into [`SessionProvider`](file:///home/sid/Desktop/Cinemate/src/context/SessionContext.tsx), eliminating the client `getSession()` startup gate (`isInitialized = true` on initial render).
+- **Concurrent Dashboard Fetching**: [`fetchDashboardData()`](file:///home/sid/Desktop/Cinemate/src/lib/services/dashboardService.ts) fetches `roomService.getUserRooms(userId)` and `favoriteService.getFavorites(userId)` concurrently via `Promise.all` for [`HomePage`](file:///home/sid/Desktop/Cinemate/src/app/page.tsx), feeding [`RecentRoomsSection`](file:///home/sid/Desktop/Cinemate/src/components/room/RecentRoomsSection.tsx) and [`FavoritesSection`](file:///home/sid/Desktop/Cinemate/src/components/room/FavoritesSection.tsx) in parallel while retaining standalone fallbacks.
+- **Parallel Room Initialization & Chat History**: [`RoomPage`](file:///home/sid/Desktop/Cinemate/src/app/room/%5Bcode%5D/page.tsx) resolves `Promise.all([params, searchParams])`. [`useRoom`](file:///home/sid/Desktop/Cinemate/src/hooks/useRoom.ts) pre-warms `supabase.realtime.setAuth()` in parallel with `createRoomSession`/`joinRoomSession` and triggers `roomService.getChatMessages(roomId)` immediately once room membership commits (running concurrently with Realtime channel subscription and player mount) without blocking video playback, forwarding `initialChatHistory` into [`ChatContainer`](file:///home/sid/Desktop/Cinemate/src/components/chat/ChatContainer.tsx) and [`useChat`](file:///home/sid/Desktop/Cinemate/src/hooks/useChat.ts).

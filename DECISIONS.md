@@ -126,4 +126,52 @@
   - Watch-party playback, chat, and authentication remain completely decoupled from voice calls.
   - STUN-only development works without third-party keys, while production mobile/NAT reliability requires configuring Cloudflare TURN keys before go-live.
 
+---
+
+## ADR-011: Instant Chat via Private Room Broadcast + Independent PostgreSQL Persistence
+
+- **Context**: Previously, sending a chat message waited for a PostgreSQL `INSERT` with a `profiles(username)` join, WAL propagation through Supabase Postgres Changes, and a second per-message `profiles` `SELECT` on every receiver before displaying the message.
+- **Decision**:
+  - Generate an RFC 4122 v4 UUID (`generateChatMessageId()`) on the sender and broadcast `CHAT_MESSAGE` immediately over the existing private `room:{roomId}` channel (already protected by `realtime.messages` RLS `can_access_room_topic()`).
+  - Persist to `public.chat_messages` independently using the same client UUID (treating `23505` duplicate-key retries as idempotent success) without joining `profiles` on insert.
+  - Deduplicate Broadcast, `postgres_changes`, optimistic state, and initial history by `id`, and resolve sender usernames from the in-memory `members` + `presenceList` cache instead of querying `profiles` per message.
+  - Track optimistic message status (`'sending' | 'sent' | 'failed'`) with bounded automatic retries for transient failures and manual retry/dismiss actions in the UI.
+- **Consequences**:
+  - Peer message delivery bypasses DB write + WAL round-trips and eliminates per-message `profiles` queries while retaining durable PostgreSQL chat history and RLS enforcement.
+
+---
+
+## ADR-012: Atomic Room Creation & Joining via `create_room_session` and `join_room_session` RPCs
+
+- **Context**: Entering or creating a watch room previously required 8–12 sequential client-to-PostgREST round-trips (`getRoomByCode`, `ensureProfile`, `rooms` insert/check, `room_members` count/check/upsert, second `getRoomByCode`, `getRoomMembers`, and a post-mount `updateVideo` call).
+- **Decision**:
+  - Consolidate room creation (including initial `video_url` and `video_type`), conditional profile sync, advisory-locked 4-member capacity enforcement, kicked-user view-only checks, membership upsert, and participant list aggregation into two `SECURITY DEFINER` RPCs: `create_room_session` and `join_room_session` (`011_atomic_room_session_rpcs.sql`).
+  - Retain a `PGRST202`/`42883` fallback in `roomService.ts` only so unmigrated environments continue functioning until migration `011` is applied.
+- **Consequences**:
+  - Reduces room creation and joining to 1 atomic database round-trip (while keeping `tr_check_room_creation_rate`, `tr_enforce_room_member_capacity`, `tr_enforce_kicked_member_viewer_only`, and `tr_guard_room_member_update` enforced server-side).
+
+---
+
+## ADR-013: Verified JWT Claims Verification with Cached JWKS in Middleware
+
+- **Context**: `updateSession` middleware previously instantiated `createServerClient()` and called `supabase.auth.getUser()` on every page navigation and `/api/*` request, causing an extra HTTPS round-trip to `/auth/v1/user` even for valid sessions and allocating clients unnecessarily when requests lacked session cookies.
+- **Decision**:
+  - Switch `updateSession` ([`middleware.ts`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/middleware.ts)) to [`getVerifiedAuthClaims()`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/auth.ts) (`supabase.auth.getClaims()`) paired with a 10-minute module-level deduplicated JWKS cache (`getCachedJwks()`), preserving automatic session refresh and rejecting anonymous, expired, `alg: 'none'`, or forged JWTs.
+  - Skip `createServerClient()` instantiation on `/auth/callback` and on requests without `sb-*-auth-token*` cookies (`hasSupabaseAuthCookie()`).
+  - Keep `supabase.auth.getUser()` inside privileged/destructive and external-secret API routes (`DELETE /api/rooms/[id]`, `DELETE /api/rooms/[id]/video`, `POST /api/rooms/[id]/call/ice-servers`, and `POST /api/rooms/[id]/call/leave`).
+- **Consequences**:
+  - Eliminates per-request `/auth/v1/user` network hops in middleware for asymmetric JWTs (`100` -> `0` `/auth/v1/user` requests across 100 requests; `1` cached JWKS fetch per 10m TTL) without weakening authentication or losing `getUser()` revocation checks on sensitive mutations.
+
+---
+
+## ADR-014: Server-Seeded `SessionProvider` & Parallel Dashboard / Room Initialization
+
+- **Context**: Even with single-RPC room creation/joining, first paint waited on a client-side `supabase.auth.getSession()` waterfall before `SessionProvider` initialized, dashboard shelves fetched independently on child mount, and chat history waited until after React committed `RoomView` -> `ChatContainer` mount and Realtime socket setup.
+- **Decision**:
+  - Resolve initial `UserIdentity` server-side in [`layout.tsx`](file:///home/sid/Desktop/Cinemate/src/app/layout.tsx) via [`getServerInitialSession()`](file:///home/sid/Desktop/Cinemate/src/lib/supabase/server.ts) (verified JWT claims + cached JWKS) and seed [`SessionProvider`](file:///home/sid/Desktop/Cinemate/src/context/SessionContext.tsx) without sharing mutable module state across SSR requests.
+  - Consolidate dashboard data fetching into [`fetchDashboardData()`](file:///home/sid/Desktop/Cinemate/src/lib/services/dashboardService.ts) using `Promise.all([roomService.getUserRooms, favoriteService.getFavorites])`.
+  - Pre-warm `realtime.setAuth` alongside `createRoomSession`/`joinRoomSession` in [`useRoom.ts`](file:///home/sid/Desktop/Cinemate/src/hooks/useRoom.ts), start `roomService.getChatMessages(room.id)` immediately after session membership commits (in parallel with Realtime subscribe and player boot), and pass `initialChatHistory` into [`useChat.ts`](file:///home/sid/Desktop/Cinemate/src/hooks/useChat.ts).
+- **Consequences**:
+  - Cuts dashboard critical-path stages from `2` to `1` (`51.61ms` -> `23.8ms` in local `20ms`-query simulation) and room init critical-path stages from `4` to `2` (`93.01ms` -> `48.05ms`) while preserving strict RLS enforcement (`chat_messages` membership check) and hydration consistency.
+
 

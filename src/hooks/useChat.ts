@@ -1,7 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { ChatMessage } from '@/core/types/room.types';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import {
+  ChatMessage,
+  InitialChatHistory,
+  ParticipantPresence,
+  RoomMember,
+} from '@/core/types/room.types';
 import { UserIdentity } from '@/core/types/session.types';
 import { roomService } from '@/lib/services/roomService';
 import {
@@ -12,28 +17,169 @@ import { isSupabaseConfigured } from '@/lib/supabase/config';
 import {
   RealtimeChatMessageRow,
   RealtimeTypingPayload,
+  subscribeToRoomChatBroadcasts,
   subscribeToRoomChatInserts,
   subscribeToRoomTyping,
 } from '@/lib/supabase/roomRealtimeBus';
+import {
+  ChatBroadcastPayload,
+  ChatPersistenceError,
+  generateChatMessageId,
+  isValidChatBroadcastPayload,
+  mergeChatHistory,
+  resolveCachedSenderName,
+  syncParticipantNameCache,
+  upsertChatMessage,
+} from '@/lib/utils/chat';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseChatProps {
   roomId: string;
   user: UserIdentity;
   channel?: RealtimeChannel | null;
+  members?: RoomMember[];
+  presenceList?: ParticipantPresence[];
+  initialHistory?: InitialChatHistory;
 }
 
-export function useChat({ roomId, user, channel }: UseChatProps) {
+interface PendingMessageEntry {
+  content: string;
+  type: 'chat' | 'system';
+  createdAt: string;
+  broadcastSent: boolean;
+}
+
+const PERSIST_RETRY_DELAYS_MS = [400, 1200];
+
+export function useChat({
+  roomId,
+  user,
+  channel,
+  members,
+  presenceList,
+  initialHistory,
+}: UseChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [partnerTyping, setPartnerTyping] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [welcomeTimestamp] = useState<string>(() => new Date().toISOString());
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingSentRef = useRef<number>(0);
+  const participantNamesRef = useRef<Map<string, string>>(new Map());
+  const inFlightProfileLookupsRef = useRef<Map<string, Promise<string | null>>>(new Map());
+  const standaloneChannelRef = useRef<RealtimeChannel | null>(null);
+  const pendingMessagesRef = useRef<Map<string, PendingMessageEntry>>(new Map());
+  const retryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const activeRoomIdRef = useRef<string>(roomId);
+  const isMountedRef = useRef<boolean>(true);
 
-  // 1. Load initial chat messages
   useEffect(() => {
-    if (!roomId) return;
+    isMountedRef.current = true;
+    const timers = retryTimersRef.current;
+    return () => {
+      isMountedRef.current = false;
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
+
+  // Reset per-room caches and pending retries when switching rooms
+  useEffect(() => {
+    activeRoomIdRef.current = roomId;
+    participantNamesRef.current.clear();
+    inFlightProfileLookupsRef.current.clear();
+    pendingMessagesRef.current.clear();
+    retryTimersRef.current.forEach((timer) => clearTimeout(timer));
+    retryTimersRef.current.clear();
+  }, [roomId]);
+
+  // Keep in-memory participant name cache synchronized with room members, presence, and self
+  useEffect(() => {
+    syncParticipantNameCache(participantNamesRef.current, {
+      self: user.id ? { id: user.id, username: user.username } : undefined,
+      members,
+      presenceList,
+    });
+
+    // Backfill any message rendered with a generic fallback name once participant data arrives
+    setMessages((prev) => {
+      let changed = false;
+      const updated = prev.map((msg) => {
+        if (msg.type === 'system') return msg;
+        if (msg.username !== 'Viewer' && msg.username !== 'Guest') return msg;
+        const cached = participantNamesRef.current.get(msg.userId);
+        if (cached && cached !== msg.username) {
+          changed = true;
+          return { ...msg, username: cached };
+        }
+        return msg;
+      });
+      return changed ? updated : prev;
+    });
+  }, [user.id, user.username, members, presenceList]);
+
+  // Single-flight fallback profile lookup ONLY when a sender is missing from cache
+  const lookupAndCacheProfile = useCallback(
+    (targetUserId: string) => {
+      if (!targetUserId || !isSupabaseConfigured()) return;
+      if (participantNamesRef.current.has(targetUserId)) return;
+      if (inFlightProfileLookupsRef.current.has(targetUserId)) return;
+
+      const supabase = getSupabaseBrowserClient();
+      const targetRoomId = roomId;
+
+      const lookupPromise = (async () => {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', targetUserId)
+            .maybeSingle();
+
+          const resolved = profile?.username?.trim() || null;
+          if (resolved && isMountedRef.current && activeRoomIdRef.current === targetRoomId) {
+            participantNamesRef.current.set(targetUserId, resolved);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.userId === targetUserId && (m.username === 'Viewer' || m.username === 'Guest')
+                  ? { ...m, username: resolved }
+                  : m
+              )
+            );
+          }
+          return resolved;
+        } catch {
+          return null;
+        } finally {
+          inFlightProfileLookupsRef.current.delete(targetUserId);
+        }
+      })();
+
+      inFlightProfileLookupsRef.current.set(targetUserId, lookupPromise);
+    },
+    [roomId]
+  );
+
+  const usesPrefetchedHistory = Boolean(
+    initialHistory && initialHistory.roomId === roomId
+  );
+  const prefetchedLoaded = Boolean(initialHistory?.loaded);
+  const prefetchedMessages = initialHistory?.messages;
+
+  // Sync participant name cache from prefetched history when available
+  useEffect(() => {
+    if (!usesPrefetchedHistory || !prefetchedLoaded || !prefetchedMessages) return;
+    prefetchedMessages.forEach((msg) => {
+      if (msg.userId && msg.username && msg.username !== 'Guest' && msg.username !== 'Viewer') {
+        participantNamesRef.current.set(msg.userId, msg.username);
+      }
+    });
+  }, [usesPrefetchedHistory, prefetchedLoaded, prefetchedMessages]);
+
+  // 1. Load initial chat messages only when useRoom did not already prefetch them
+  useEffect(() => {
+    if (!roomId || usesPrefetchedHistory) return;
 
     let isMounted = true;
     async function loadMessages() {
@@ -41,21 +187,26 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
       try {
         const history = await roomService.getChatMessages(roomId);
         if (isMounted) {
+          history.forEach((msg) => {
+            if (msg.userId && msg.username && msg.username !== 'Guest' && msg.username !== 'Viewer') {
+              participantNamesRef.current.set(msg.userId, msg.username);
+            }
+          });
+
           if (history.length > 0) {
-            setMessages(history);
+            setMessages((prev) => mergeChatHistory(history, prev));
           } else {
-            // Initial friendly welcome message
-            setMessages([
-              {
-                id: 'welcome-msg',
-                roomId,
-                userId: 'system',
-                username: 'Syncora',
-                content: 'Welcome to your watch party! Chat in real-time as you watch together.',
-                type: 'system',
-                createdAt: new Date().toISOString(),
-              },
-            ]);
+            // Initial friendly welcome message (preserve any messages already received while loading)
+            const welcome: ChatMessage = {
+              id: 'welcome-msg',
+              roomId,
+              userId: 'system',
+              username: 'Syncora',
+              content: 'Welcome to your watch party! Chat in real-time as you watch together.',
+              type: 'system',
+              createdAt: welcomeTimestamp,
+            };
+            setMessages((prev) => (prev.length > 0 ? prev : [welcome]));
           }
         }
       } catch (err) {
@@ -70,29 +221,83 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
     return () => {
       isMounted = false;
     };
-  }, [roomId]);
+  }, [roomId, usesPrefetchedHistory, welcomeTimestamp]);
 
-  // 2. Realtime Subscription for incoming messages
+  const resolvedMessages = useMemo(() => {
+    if (!usesPrefetchedHistory || !prefetchedLoaded || !prefetchedMessages) {
+      return messages;
+    }
+
+    if (prefetchedMessages.length > 0) {
+      return mergeChatHistory(prefetchedMessages, messages);
+    }
+
+    if (messages.length > 0) {
+      return messages;
+    }
+
+    return [
+      {
+        id: 'welcome-msg',
+        roomId,
+        userId: 'system',
+        username: 'Syncora',
+        content: 'Welcome to your watch party! Chat in real-time as you watch together.',
+        type: 'system' as const,
+        createdAt: welcomeTimestamp,
+      },
+    ];
+  }, [
+    usesPrefetchedHistory,
+    prefetchedLoaded,
+    prefetchedMessages,
+    messages,
+    roomId,
+    welcomeTimestamp,
+  ]);
+
+  const effectiveIsLoading = usesPrefetchedHistory
+    ? !initialHistory?.loaded && Boolean(initialHistory?.isLoading)
+    : isLoading;
+
+  // 2. Realtime Subscription for incoming Broadcasts (instant) and Postgres Changes (durable)
   // Reuses events dispatched by the unified room channel when channel prop is managed by useRoom
   useEffect(() => {
     if (!roomId || !isSupabaseConfigured()) return;
 
     const supabase = getSupabaseBrowserClient();
 
-    const handleIncomingRow = async (newRow: RealtimeChatMessageRow) => {
-      let senderName = user.id === newRow.user_id ? user.username : 'Viewer';
+    const handleIncomingBroadcast = (payload: ChatBroadcastPayload) => {
+      if (!isValidChatBroadcastPayload(payload, roomId)) return;
 
-      if (user.id !== newRow.user_id) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', newRow.user_id)
-          .maybeSingle();
+      const senderName = resolveCachedSenderName(
+        participantNamesRef.current,
+        payload.userId,
+        payload.userId === user.id ? user.username : payload.username
+      );
 
-        if (profile?.username) {
-          senderName = profile.username;
-        }
-      }
+      const incomingMsg: ChatMessage = {
+        id: payload.id,
+        roomId: payload.roomId,
+        userId: payload.userId,
+        username: senderName,
+        content: payload.content,
+        type: payload.type,
+        createdAt: payload.createdAt,
+        status: 'sent',
+      };
+
+      setMessages((prev) => upsertChatMessage(prev, incomingMsg));
+    };
+
+    const handleIncomingRow = (newRow: RealtimeChatMessageRow) => {
+      const hasCachedName =
+        newRow.user_id === user.id || participantNamesRef.current.has(newRow.user_id);
+
+      const senderName =
+        newRow.user_id === user.id
+          ? user.username
+          : resolveCachedSenderName(participantNamesRef.current, newRow.user_id);
 
       const incomingMsg: ChatMessage = {
         id: newRow.id,
@@ -102,48 +307,51 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
         content: newRow.content,
         type: newRow.type,
         createdAt: newRow.created_at,
+        status: 'sent',
       };
 
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === incomingMsg.id)) {
-          return prev;
-        }
-        // Replace matching optimistic temp message if realtime arrives before insert response
-        const tempIndex = prev.findIndex(
-          (m) =>
-            m.id.startsWith('temp-') &&
-            m.userId === incomingMsg.userId &&
-            m.content === incomingMsg.content
-        );
-        if (tempIndex !== -1) {
-          return prev.map((m, idx) => (idx === tempIndex ? incomingMsg : m));
-        }
-        return [...prev, incomingMsg];
-      });
+      setMessages((prev) => upsertChatMessage(prev, incomingMsg));
+
+      // Only hit profiles table if sender is genuinely absent from member/presence cache
+      if (!hasCachedName) {
+        lookupAndCacheProfile(newRow.user_id);
+      }
     };
 
     // Unified room channel mode (channel prop passed by RoomView/ChatContainer, even while null during initial connect)
     if (channel !== undefined) {
-      return subscribeToRoomChatInserts(roomId, handleIncomingRow);
+      const unsubBroadcast = subscribeToRoomChatBroadcasts(roomId, handleIncomingBroadcast);
+      const unsubInserts = subscribeToRoomChatInserts(roomId, handleIncomingRow);
+      return () => {
+        unsubBroadcast();
+        unsubInserts();
+      };
     }
 
     // Standalone fallback mode if no shared channel prop is supplied (private, members-only topic)
     const standaloneChannel = supabase.channel(`room_chat:${roomId}`, {
       config: { private: true },
     });
+    standaloneChannelRef.current = standaloneChannel;
     let isDisposed = false;
-    standaloneChannel.on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages',
-        filter: `room_id=eq.${roomId}`,
-      },
-      (payload) => {
-        handleIncomingRow(payload.new as RealtimeChatMessageRow);
-      }
-    );
+    standaloneChannel
+      .on('broadcast', { event: 'CHAT_MESSAGE' }, (msg: { payload?: unknown }) => {
+        if (isValidChatBroadcastPayload(msg?.payload, roomId)) {
+          handleIncomingBroadcast(msg.payload);
+        }
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          handleIncomingRow(payload.new as RealtimeChatMessageRow);
+        }
+      );
 
     void (async () => {
       try {
@@ -157,9 +365,12 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
 
     return () => {
       isDisposed = true;
+      if (standaloneChannelRef.current === standaloneChannel) {
+        standaloneChannelRef.current = null;
+      }
       supabase.removeChannel(standaloneChannel);
     };
-  }, [roomId, user.id, user.username, channel]);
+  }, [roomId, user.id, user.username, channel, lookupAndCacheProfile]);
 
   // 3. Typing indicator broadcast listener via shared channel
   useEffect(() => {
@@ -192,51 +403,184 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
     };
   }, [roomId, channel, user.id]);
 
-  // 4. Send Message function with optimistic local update
+  // Helper: persist message to PostgreSQL independently with bounded transient retries
+  const persistMessageWithRetry = useCallback(
+    async (
+      messageId: string,
+      content: string,
+      type: 'chat' | 'system',
+      createdAt: string
+    ): Promise<void> => {
+      const targetRoomId = roomId;
+
+      const runAttempt = async (attempt: number): Promise<void> => {
+        try {
+          const saved = await roomService.sendChatMessage({
+            id: messageId,
+            roomId: targetRoomId,
+            userId: user.id,
+            username: user.username,
+            content,
+            type,
+            createdAt,
+          });
+
+          if (!isMountedRef.current || activeRoomIdRef.current !== targetRoomId) return;
+
+          pendingMessagesRef.current.delete(messageId);
+          if (saved) {
+            setMessages((prev) =>
+              upsertChatMessage(prev, {
+                ...saved,
+                status: 'sent',
+                errorMessage: undefined,
+              })
+            );
+          }
+        } catch (err: unknown) {
+          if (!isMountedRef.current || activeRoomIdRef.current !== targetRoomId) return;
+
+          const retryable = err instanceof ChatPersistenceError ? err.retryable : true;
+          if (retryable && attempt < PERSIST_RETRY_DELAYS_MS.length) {
+            const delayMs = PERSIST_RETRY_DELAYS_MS[attempt];
+            const timer = setTimeout(() => {
+              retryTimersRef.current.delete(timer);
+              if (!isMountedRef.current || activeRoomIdRef.current !== targetRoomId) return;
+              void runAttempt(attempt + 1);
+            }, delayMs);
+            retryTimersRef.current.add(timer);
+            return;
+          }
+
+          const errorMessage =
+            err instanceof Error ? err.message : 'Could not save message.';
+          console.warn('[Syncora] Chat persistence failed:', errorMessage);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? { ...m, status: 'failed', errorMessage }
+                : m
+            )
+          );
+        }
+      };
+
+      await runAttempt(0);
+    },
+    [roomId, user.id, user.username]
+  );
+
+  const broadcastChatMessage = useCallback(
+    (payload: ChatBroadcastPayload): boolean => {
+      const activeChannel = channel ?? standaloneChannelRef.current;
+      if (!activeChannel) return false;
+      try {
+        void activeChannel
+          .send({
+            type: 'broadcast',
+            event: 'CHAT_MESSAGE',
+            payload,
+          })
+          .catch((err) => {
+            console.warn('[Syncora] Chat broadcast error:', err);
+          });
+        return true;
+      } catch (err) {
+        console.warn('[Syncora] Chat broadcast error:', err);
+        return false;
+      }
+    },
+    [channel]
+  );
+
+  // 4. Instant Send: optimistic render + immediate Realtime Broadcast + independent DB persistence
   const sendMessage = useCallback(
     async (content: string, type: 'chat' | 'system' = 'chat') => {
       const trimmed = content.trim();
       if (!trimmed || !roomId) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const messageId = generateChatMessageId();
+      const createdAt = new Date().toISOString();
+
       const optimisticMessage: ChatMessage = {
-        id: tempId,
+        id: messageId,
         roomId,
         userId: user.id,
         username: user.username,
         content: trimmed,
         type,
-        createdAt: new Date().toISOString(),
+        createdAt,
+        status: 'sending',
       };
 
-      // Optimistically append
-      setMessages((prev) => [...prev, optimisticMessage]);
+      // 1. Optimistic local UI update
+      setMessages((prev) => upsertChatMessage(prev, optimisticMessage));
 
-      try {
-        const saved = await roomService.sendChatMessage({
+      // 2. Immediate Realtime Broadcast over the authorized room channel
+      const broadcastSent = broadcastChatMessage({
+        id: messageId,
+        roomId,
+        userId: user.id,
+        username: user.username,
+        content: trimmed,
+        type,
+        createdAt,
+      });
+
+      pendingMessagesRef.current.set(messageId, {
+        content: trimmed,
+        type,
+        createdAt,
+        broadcastSent,
+      });
+
+      // 3. Independent PostgreSQL persistence (with automatic retries on transient failures)
+      await persistMessageWithRetry(messageId, trimmed, type, createdAt);
+    },
+    [roomId, user.id, user.username, broadcastChatMessage, persistMessageWithRetry]
+  );
+
+  // 4b. Manual retry for messages that failed persistence
+  const retryMessage = useCallback(
+    async (messageId: string) => {
+      const pending = pendingMessagesRef.current.get(messageId);
+      if (!pending || !roomId) return;
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, status: 'sending', errorMessage: undefined }
+            : m
+        )
+      );
+
+      if (!pending.broadcastSent) {
+        pending.broadcastSent = broadcastChatMessage({
+          id: messageId,
           roomId,
           userId: user.id,
           username: user.username,
-          content: trimmed,
-          type,
+          content: pending.content,
+          type: pending.type,
+          createdAt: pending.createdAt,
         });
-
-        if (saved) {
-          // Replace optimistic ID with server ID, removing duplicate if realtime arrived first
-          setMessages((prev) => {
-            const alreadyPresent = prev.some((m) => m.id === saved.id);
-            if (alreadyPresent) {
-              return prev.filter((m) => m.id !== tempId);
-            }
-            return prev.map((m) => (m.id === tempId ? saved : m));
-          });
-        }
-      } catch (err) {
-        console.warn('[Syncora] Send message error:', err);
       }
+
+      await persistMessageWithRetry(
+        messageId,
+        pending.content,
+        pending.type,
+        pending.createdAt
+      );
     },
-    [roomId, user.id, user.username]
+    [roomId, user.id, user.username, broadcastChatMessage, persistMessageWithRetry]
   );
+
+  // 4c. Dismiss a failed unsent message from the local list
+  const dismissFailedMessage = useCallback((messageId: string) => {
+    pendingMessagesRef.current.delete(messageId);
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+  }, []);
 
   // 5. Quick Reaction shortcut
   const sendReaction = useCallback(
@@ -276,12 +620,13 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
   );
 
   return {
-    messages,
+    messages: resolvedMessages,
     sendMessage,
+    retryMessage,
+    dismissFailedMessage,
     sendReaction,
     partnerTyping,
     setTyping,
-    isLoading,
+    isLoading: effectiveIsLoading,
   };
 }
-
