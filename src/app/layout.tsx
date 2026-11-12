@@ -25,7 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Syncora — Private Watch Party Lounge',
+  title: 'Syncora',
   description:
     'Watch YouTube videos, direct streams, and personal uploads together in host-authoritative synchronization with persistent live chat.',
 };

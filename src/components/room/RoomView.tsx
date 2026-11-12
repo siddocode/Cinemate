@@ -42,6 +42,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     isHost,
     isCoHost,
     canControl,
+    canStartCall,
     members,
     duoStatus,
     presenceList,
@@ -59,6 +60,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     kickMember,
     updateMemberRole,
     toggleGuestControl,
+    toggleGuestCall,
     closeRoom,
     channel,
   } = useRoom(roomCode, initialTitle, allowCreate);
@@ -73,6 +75,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const voiceCall = useCall({
     roomId: room?.id,
     hostId: room?.hostId,
+    canStartCall,
     user,
     presenceList,
     members,
@@ -274,6 +277,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
           isInCall: voiceCall.isInCall,
           isLeaving: voiceCall.isLeaving,
           isCallFull: voiceCall.isCallFull,
+          canStartCall,
           isMuted: voiceCall.isMuted,
           isLocalSpeaking: voiceCall.isLocalSpeaking,
           isPeerSpeaking: voiceCall.isPeerSpeaking,
@@ -431,6 +435,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onUpdateRole={updateMemberRole}
         onKickMember={kickMember}
         onToggleGuestControl={toggleGuestControl}
+        onToggleGuestCall={toggleGuestCall}
       />
     </div>
   );

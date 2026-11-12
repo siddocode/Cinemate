@@ -72,9 +72,12 @@ export class SyncEngine {
         void this.adapter.pause();
       }
 
+      const initialLocalPos = this.adapter.getPlaybackState().currentTime;
       if (
         config.initialPlayback &&
-        (config.initialPlayback.isPlaying || config.initialPlayback.position > 0.5)
+        (config.initialPlayback.isPlaying ||
+          config.initialPlayback.position > 0.5 ||
+          initialLocalPos > 0.5)
       ) {
         const lastSyncedMs = Date.parse(config.initialPlayback.lastSyncedAt || '');
         const elapsedSec =
@@ -92,8 +95,10 @@ export class SyncEngine {
     if (this.isDestroyed || this.hasReceivedRemoteSync) return;
     this.isRemoteSyncing = true;
     try {
-      if (position > 0.5) {
+      const localPos = this.adapter.getPlaybackState().currentTime;
+      if (position > 0.5 || Math.abs(localPos - position) > 0.5) {
         await this.adapter.seekTo(position);
+        this.onDriftUpdated?.(0, true);
       }
       if (isPlaying) {
         await this.adapter.play();
@@ -314,6 +319,7 @@ export class SyncEngine {
         !payload.isPlaying && Math.abs(drift) > SYNC_CONSTANTS.DEADBAND_SECONDS;
       if (payload.action === 'SEEK' || correction.action === 'HARD_SEEK' || needsPausedSeek) {
         await this.adapter.seekTo(authoritativePosition);
+        this.onDriftUpdated?.(0, true);
       }
 
       // 2. Play / Pause State Reconciliation

@@ -48,9 +48,13 @@ export class PeerConnectionManager {
   private makingOffer: boolean = false;
   private ignoreOffer: boolean = false;
   private isSettingRemoteAnswerPending: boolean = false;
+  private isHandlingOffer: boolean = false;
   private hasNegotiatedOnce: boolean = false;
   private pendingNegotiation: boolean = false;
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
+  private lastRemoteOfferSdp: string | null = null;
+  private lastLocalAnswerSdp: string | null = null;
+  private signalingChain: Promise<void> = Promise.resolve();
 
   private restartAttempts: number = 0;
   private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -122,45 +126,58 @@ export class PeerConnectionManager {
     }
   }
 
+  private enqueueSignaling(task: () => Promise<void>): Promise<void> {
+    const run = this.signalingChain.then(
+      () => (this.isDestroyed ? undefined : task()),
+      () => (this.isDestroyed ? undefined : task())
+    );
+    this.signalingChain = run.catch(() => {});
+    return run;
+  }
+
   /**
    * Explicitly initiates negotiation (used when starting or restarting ICE).
    */
   public async createAndSendOffer(options?: RTCOfferOptions): Promise<void> {
     if (this.isDestroyed) return;
 
-    if (this.makingOffer || this.pc.signalingState !== 'stable') {
-      this.pendingNegotiation = true;
-      return;
-    }
+    await this.enqueueSignaling(async () => {
+      if (this.isDestroyed || this.pc.signalingState === 'closed') return;
 
-    this.makingOffer = true;
-    try {
-      const offer = await this.pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: false,
-        ...options,
-      });
-
-      if (this.isDestroyed || this.pc.signalingState !== 'stable') {
+      if (this.makingOffer || this.pc.signalingState !== 'stable') {
+        this.pendingNegotiation = true;
         return;
       }
 
-      await this.pc.setLocalDescription(offer);
-      this.hasNegotiatedOnce = true;
-      const localSdp = this.pc.localDescription?.sdp || offer.sdp;
-      if (localSdp) {
-        this.callbacks.onOffer({ type: 'offer', sdp: localSdp });
-      }
-    } catch {
-      if (!this.isDestroyed) {
-        this.callbacks.onError?.({
-          code: 'SIGNALING_ERROR',
-          message: 'Failed to create voice call offer.',
+      this.makingOffer = true;
+      try {
+        const offer = await this.pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: false,
+          ...options,
         });
+
+        if (this.isDestroyed || this.pc.signalingState !== 'stable') {
+          return;
+        }
+
+        await this.pc.setLocalDescription(offer);
+        this.hasNegotiatedOnce = true;
+        const localSdp = this.pc.localDescription?.sdp || offer.sdp;
+        if (localSdp) {
+          this.callbacks.onOffer({ type: 'offer', sdp: localSdp });
+        }
+      } catch {
+        if (!this.isDestroyed) {
+          this.callbacks.onError?.({
+            code: 'SIGNALING_ERROR',
+            message: 'Failed to create voice call offer.',
+          });
+        }
+      } finally {
+        this.makingOffer = false;
       }
-    } finally {
-      this.makingOffer = false;
-    }
+    });
   }
 
   /**
@@ -170,12 +187,12 @@ export class PeerConnectionManager {
     if (this.isDestroyed) return;
 
     if (signal.event === 'offer') {
-      await this.handleIncomingOffer(signal.sdp.sdp);
+      await this.enqueueSignaling(() => this.handleIncomingOffer(signal.sdp.sdp));
       return;
     }
 
     if (signal.event === 'answer') {
-      await this.handleIncomingAnswer(signal.sdp.sdp);
+      await this.enqueueSignaling(() => this.handleIncomingAnswer(signal.sdp.sdp));
       return;
     }
 
@@ -218,6 +235,9 @@ export class PeerConnectionManager {
     this.makingOffer = false;
     this.ignoreOffer = false;
     this.isSettingRemoteAnswerPending = false;
+    this.isHandlingOffer = false;
+    this.lastRemoteOfferSdp = null;
+    this.lastLocalAnswerSdp = null;
 
     this.pc.onnegotiationneeded = null;
     this.pc.onicecandidate = null;
@@ -248,7 +268,7 @@ export class PeerConnectionManager {
 
   private bindPeerEvents(): void {
     this.pc.onnegotiationneeded = () => {
-      if (this.deferInitialOffer && !this.hasNegotiatedOnce && !this.pc.remoteDescription) {
+      if (this.deferInitialOffer && (!this.hasNegotiatedOnce || this.isHandlingOffer)) {
         return;
       }
       void this.createAndSendOffer();
@@ -313,6 +333,18 @@ export class PeerConnectionManager {
   }
 
   private async handleIncomingOffer(sdp: string): Promise<void> {
+    if (this.isDestroyed || this.pc.signalingState === 'closed') return;
+
+    // Idempotent handling when a partner retransmits an offer we already answered in stable state
+    if (
+      this.pc.signalingState === 'stable' &&
+      this.lastRemoteOfferSdp === sdp &&
+      this.lastLocalAnswerSdp
+    ) {
+      this.callbacks.onAnswer({ type: 'answer', sdp: this.lastLocalAnswerSdp });
+      return;
+    }
+
     const readyForOffer =
       !this.makingOffer &&
       (this.pc.signalingState === 'stable' || this.isSettingRemoteAnswerPending);
@@ -323,6 +355,7 @@ export class PeerConnectionManager {
       return;
     }
 
+    this.isHandlingOffer = true;
     try {
       if (offerCollision && this.polite && this.pc.signalingState === 'have-local-offer') {
         try {
@@ -330,10 +363,15 @@ export class PeerConnectionManager {
         } catch {
           // Fall through to implicit rollback on setRemoteDescription
         }
+      } else if (this.pc.signalingState === 'have-remote-offer') {
+        try {
+          await this.pc.setRemoteDescription({ type: 'rollback' });
+        } catch {
+          // Proceed and let setRemoteDescription attempt replacement
+        }
       }
 
       await this.pc.setRemoteDescription({ type: 'offer', sdp });
-      this.hasNegotiatedOnce = true;
       await this.flushPendingIceCandidates();
 
       const answer = await this.pc.createAnswer();
@@ -341,16 +379,29 @@ export class PeerConnectionManager {
 
       await this.pc.setLocalDescription(answer);
       const localSdp = this.pc.localDescription?.sdp || answer.sdp;
+      this.hasNegotiatedOnce = true;
+      this.lastRemoteOfferSdp = sdp;
       if (localSdp) {
+        this.lastLocalAnswerSdp = localSdp;
         this.callbacks.onAnswer({ type: 'answer', sdp: localSdp });
       }
-    } catch {
+    } catch (err) {
+      if (this.pc.signalingState === 'have-remote-offer') {
+        try {
+          await this.pc.setRemoteDescription({ type: 'rollback' });
+        } catch {
+          // Ignore rollback failure during error cleanup
+        }
+      }
       if (!this.isDestroyed) {
+        console.warn('[PeerConnectionManager] Failed to process partner voice offer:', err);
         this.callbacks.onError?.({
           code: 'SIGNALING_ERROR',
           message: 'Failed to process partner voice offer.',
         });
       }
+    } finally {
+      this.isHandlingOffer = false;
     }
   }
 

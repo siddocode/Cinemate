@@ -163,7 +163,9 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {error.code !== 'CALL_FULL' && !isInCall && (
+            {error.code !== 'CALL_FULL' &&
+              !/host or permitted members/i.test(error.message) &&
+              !isInCall && (
               <button
                 type="button"
                 onClick={onJoin}

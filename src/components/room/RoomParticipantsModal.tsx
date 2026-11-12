@@ -15,6 +15,7 @@ import {
   Crown,
   Loader2,
   AlertCircle,
+  PhoneCall,
 } from 'lucide-react';
 
 interface RoomParticipantsModalProps {
@@ -28,6 +29,7 @@ interface RoomParticipantsModalProps {
   onUpdateRole: (userId: string, newRole: 'co-host' | 'viewer') => Promise<{ success: boolean; error?: string } | undefined>;
   onKickMember: (userId: string) => Promise<{ success: boolean; error?: string } | undefined>;
   onToggleGuestControl: (allow: boolean) => Promise<{ success: boolean; error?: string } | undefined>;
+  onToggleGuestCall?: (allow: boolean) => Promise<{ success: boolean; error?: string } | undefined>;
 }
 
 export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
@@ -41,10 +43,12 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
   onUpdateRole,
   onKickMember,
   onToggleGuestControl,
+  onToggleGuestCall,
 }) => {
   const [copied, setCopied] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [toggleLoading, setToggleLoading] = useState(false);
+  const [callToggleLoading, setCallToggleLoading] = useState(false);
   const [confirmKickId, setConfirmKickId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -67,6 +71,20 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
       }
     } finally {
       setToggleLoading(false);
+    }
+  };
+
+  const handleToggleGuestCall = async () => {
+    if (callToggleLoading || !isHost || !onToggleGuestCall) return;
+    setCallToggleLoading(true);
+    setActionError(null);
+    try {
+      const res = await onToggleGuestCall(!room.allowGuestCall);
+      if (res && !res.success && res.error) {
+        setActionError(res.error);
+      }
+    } finally {
+      setCallToggleLoading(false);
     }
   };
 
@@ -131,49 +149,99 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
           </div>
         )}
 
-        {/* Host Playback Authority Delegation Section */}
-        <div className="p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#9670FF]/15 border border-[#9670FF]/40 text-[#B397FF] flex items-center justify-center shrink-0">
-                <Sliders className="w-4 h-4" />
+        {/* Host Authority Delegation Controls */}
+        <div className="space-y-2.5">
+          {/* Shared Playback Controls */}
+          <div className="p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#9670FF]/15 border border-[#9670FF]/40 text-[#B397FF] flex items-center justify-center shrink-0">
+                  <Sliders className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-medium text-[#F7F4EC]">
+                    Shared Playback Controls
+                  </h4>
+                  <p className="text-[11px] text-[#CDBF9F] leading-tight mt-0.5">
+                    {room.allowGuestControl
+                      ? 'All participants can play, pause, seek, and change video'
+                      : 'Restricted: Only Host and Co-Hosts can control video'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-xs sm:text-sm font-medium text-[#F7F4EC]">
-                  Shared Playback Controls
-                </h4>
-                <p className="text-[11px] text-[#CDBF9F] leading-tight mt-0.5">
-                  {room.allowGuestControl
-                    ? 'All participants can play, pause, seek, and change video'
-                    : 'Restricted: Only Host and Co-Hosts can control video'}
-                </p>
+
+              {isHost ? (
+                <button
+                  type="button"
+                  onClick={handleToggleControl}
+                  disabled={toggleLoading}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
+                    room.allowGuestControl ? 'bg-[#9670FF]' : 'bg-[#E8DDC5]/25'
+                  }`}
+                  role="switch"
+                  aria-checked={Boolean(room.allowGuestControl)}
+                  title="Toggle playback permissions"
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-[#F7F4EC] shadow-md ring-0 transition duration-200 ease-in-out ${
+                      room.allowGuestControl ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              ) : (
+                <Badge variant={room.allowGuestControl ? 'success' : 'default'} className="text-[10px]">
+                  {room.allowGuestControl ? 'Enabled' : 'Host Only'}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Voice Call Initiation Permission */}
+          {onToggleGuestCall && (
+            <div className="p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-[#9670FF]/15 border border-[#9670FF]/40 text-[#B397FF] flex items-center justify-center shrink-0">
+                    <PhoneCall className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-medium text-[#F7F4EC]">
+                      Voice Call Initiation
+                    </h4>
+                    <p className="text-[11px] text-[#CDBF9F] leading-tight mt-0.5">
+                      {room.allowGuestCall
+                        ? 'All participants can start a new voice call'
+                        : 'Restricted: Only Host and Co-Hosts can start calls (others can join)'}
+                    </p>
+                  </div>
+                </div>
+
+                {isHost ? (
+                  <button
+                    type="button"
+                    onClick={handleToggleGuestCall}
+                    disabled={callToggleLoading}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
+                      room.allowGuestCall ? 'bg-[#9670FF]' : 'bg-[#E8DDC5]/25'
+                    }`}
+                    role="switch"
+                    aria-checked={Boolean(room.allowGuestCall)}
+                    title="Toggle who can start voice calls"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-[#F7F4EC] shadow-md ring-0 transition duration-200 ease-in-out ${
+                        room.allowGuestCall ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                ) : (
+                  <Badge variant={room.allowGuestCall ? 'success' : 'default'} className="text-[10px]">
+                    {room.allowGuestCall ? 'Enabled' : 'Host Only'}
+                  </Badge>
+                )}
               </div>
             </div>
-
-            {isHost ? (
-              <button
-                type="button"
-                onClick={handleToggleControl}
-                disabled={toggleLoading}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
-                  room.allowGuestControl ? 'bg-[#9670FF]' : 'bg-[#E8DDC5]/25'
-                }`}
-                role="switch"
-                aria-checked={Boolean(room.allowGuestControl)}
-                title="Toggle playback permissions"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-[#F7F4EC] shadow-md ring-0 transition duration-200 ease-in-out ${
-                    room.allowGuestControl ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            ) : (
-              <Badge variant={room.allowGuestControl ? 'success' : 'default'} className="text-[10px]">
-                {room.allowGuestControl ? 'Enabled' : 'Host Only'}
-              </Badge>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Room Code & Copy Pill */}

@@ -50,6 +50,7 @@ export interface Database {
           is_private: boolean;
           passcode_hash: string | null;
           allow_guest_control?: boolean;
+          allow_guest_call?: boolean;
           kicked_user_ids?: string[];
           closed_at?: string | null;
           created_at: string;
@@ -68,6 +69,7 @@ export interface Database {
           is_private?: boolean;
           passcode_hash?: string | null;
           allow_guest_control?: boolean;
+          allow_guest_call?: boolean;
           kicked_user_ids?: string[];
           closed_at?: string | null;
           created_at?: string;
@@ -86,6 +88,7 @@ export interface Database {
           is_private?: boolean;
           passcode_hash?: string | null;
           allow_guest_control?: boolean;
+          allow_guest_call?: boolean;
           kicked_user_ids?: string[];
           closed_at?: string | null;
           created_at?: string;

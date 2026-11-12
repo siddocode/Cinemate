@@ -48,7 +48,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
       .getUserRooms(user.id)
       .then((items) => {
         if (isMounted) {
-          setRooms(items);
+          setRooms(items.filter((r) => r.hostId === user.id));
           setIsLoading(false);
         }
       })
@@ -131,7 +131,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-[#E8DDC5]" />
           <h2 className="font-serif text-xl sm:text-2xl font-medium tracking-tight text-[#F7F4EC]">
-            Recent Rooms &amp; Chat History
+            Your Recent Rooms
           </h2>
         </div>
         {!isLoading && (

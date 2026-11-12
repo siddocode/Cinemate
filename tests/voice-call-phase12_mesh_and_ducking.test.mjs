@@ -273,5 +273,83 @@ describe('Phase 12 — 4-Way Mesh Voice Calls & Video Auto-Ducking', () => {
 
     sig.destroy();
   });
+
+  it('6. Call initiation permissions restrict starting a call to Host / Co-Host / allow_guest_call while letting all members join active calls', () => {
+    const mig010Sql = fs.readFileSync(
+      path.join(process.cwd(), 'supabase/migrations/010_voice_call_initiation_permissions.sql'),
+      'utf-8'
+    );
+    const fullSetupSql = fs.readFileSync(
+      path.join(process.cwd(), 'supabase/full_setup.sql'),
+      'utf-8'
+    );
+    const useRoomCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/hooks/useRoom.ts'),
+      'utf-8'
+    );
+    const useCallCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/hooks/useCall.ts'),
+      'utf-8'
+    );
+    const modalCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/room/RoomParticipantsModal.tsx'),
+      'utf-8'
+    );
+    const headerCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/room/RoomHeader.tsx'),
+      'utf-8'
+    );
+
+    for (const sql of [mig010Sql, fullSetupSql]) {
+      assert.match(sql, /allow_guest_call BOOLEAN DEFAULT false NOT NULL/);
+      assert.match(sql, /NEW\.allow_guest_call IS DISTINCT FROM OLD\.allow_guest_call/);
+      assert.match(sql, /IF v_count = 0 THEN[\s\S]*CALL_START_NOT_ALLOWED/);
+      assert.match(sql, /v_allow_guest_call OR public\.is_room_host_or_cohost/);
+    }
+
+    assert.match(useRoomCode, /canStartCall\s*=/);
+    assert.match(useRoomCode, /toggleGuestCall/);
+    assert.match(useCallCode, /canStartCallRef\.current/);
+    assert.match(useCallCode, /CALL_START_NOT_ALLOWED/);
+    assert.match(modalCode, /Voice Call Initiation/);
+    assert.match(modalCode, /onToggleGuestCall/);
+    assert.match(headerCode, /Host Starts Voice/);
+  });
+
+  it('7. Recent rooms listing shows only rooms hosted by the current user', () => {
+    const roomServiceCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/services/roomService.ts'),
+      'utf-8'
+    );
+    const recentRoomsCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/room/RecentRoomsSection.tsx'),
+      'utf-8'
+    );
+
+    // Ensure getUserRooms queries only hosted rooms (no room_members non-host fetch)
+    const getUserRoomsSlice = roomServiceCode.slice(
+      roomServiceCode.indexOf('async getUserRooms('),
+      roomServiceCode.indexOf('async leaveOrDeleteRoom(')
+    );
+    assert.ok(!getUserRoomsSlice.includes(".from('room_members')"));
+    assert.match(getUserRoomsSlice, /\.eq\('host_id', userId\)/);
+    assert.match(recentRoomsCode, /\.filter\(\(r\) => r\.hostId === user\.id\)/);
+  });
+
+  it('8. useCall only resends pending offers on firstHello and clears transient SIGNALING_ERROR on connect', () => {
+    const useCallCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/hooks/useCall.ts'),
+      'utf-8'
+    );
+
+    assert.match(
+      useCallCode,
+      /if \(pcMgr && firstHello && userIdRef\.current > fromUserId\)/
+    );
+    assert.match(
+      useCallCode,
+      /if \(pcStatus === 'connected'\)[\s\S]*setError\(\(prev\) => \(prev\?\.code === 'SIGNALING_ERROR' \? null : prev\)\)/
+    );
+  });
 });
 

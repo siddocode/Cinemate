@@ -24,6 +24,7 @@ export interface Room {
   isPrivate: boolean;
   passcodeHash?: string | null;
   allowGuestControl?: boolean;
+  allowGuestCall?: boolean;
   kickedUserIds?: string[];
   createdAt: string;
   updatedAt: string;

@@ -31,6 +31,7 @@ import { UserIdentity } from '@/core/types/session.types';
 interface UseCallOptions {
   roomId?: string;
   hostId?: string;
+  canStartCall?: boolean;
   user: UserIdentity;
   presenceList: ParticipantPresence[];
   members: RoomMember[];
@@ -103,6 +104,7 @@ function stopMediaStream(stream: MediaStream | null): void {
 export function useCall({
   roomId,
   hostId,
+  canStartCall = true,
   user,
   presenceList,
   members,
@@ -155,12 +157,14 @@ export function useCall({
 
   const roomIdRef = useRef(roomId);
   const hostIdRef = useRef(hostId);
+  const canStartCallRef = useRef(canStartCall);
   const userIdRef = useRef(user.id);
   useEffect(() => {
     roomIdRef.current = roomId;
     hostIdRef.current = hostId;
+    canStartCallRef.current = canStartCall;
     userIdRef.current = user.id;
-  }, [roomId, hostId, user.id]);
+  }, [roomId, hostId, canStartCall, user.id]);
 
   const clearTimers = useCallback(() => {
     if (heartbeatTimerRef.current) {
@@ -737,6 +741,7 @@ export function useCall({
                 clearTimeout(fallbackTimer);
                 offerFallbackTimersRef.current.delete(peerId);
               }
+              setError((prev) => (prev?.code === 'SIGNALING_ERROR' ? null : prev));
             }
             setPeerStatuses((prev) =>
               prev[peerId] === pcStatus ? prev : { ...prev, [peerId]: pcStatus }
@@ -895,12 +900,12 @@ export function useCall({
           signaling?.sendMediaState(fromUserId, { isMuted: isMutedRef.current });
         }
 
-        // Impolite peer initiates or resends its pending offer once peer inbox is proven live
-        if (pcMgr && userIdRef.current > fromUserId) {
+        // Impolite peer initiates or resends its pending offer once when peer inbox is first proven live
+        if (pcMgr && firstHello && userIdRef.current > fromUserId) {
           const pendingOffer = pcMgr.getPendingOffer();
           if (pendingOffer) {
             signaling?.sendOffer(fromUserId, pendingOffer);
-          } else if (firstHello) {
+          } else {
             void pcMgr.createAndSendOffer();
           }
         }
@@ -939,6 +944,16 @@ export function useCall({
       setError({
         code: 'UNSUPPORTED_BROWSER',
         message: 'Your browser does not support WebRTC voice calling.',
+      });
+      return;
+    }
+
+    const hasActiveCall = callSlots.some((slot) => isSlotFresh(slot));
+    if (!hasActiveCall && !canStartCallRef.current) {
+      setError({
+        code: 'PERMISSION_DENIED',
+        message:
+          'Only the room host or permitted members can start a voice call. You can join once it begins.',
       });
       return;
     }
@@ -987,6 +1002,8 @@ export function useCall({
         const msg = rpcError?.message || 'Unable to join voice call.';
         const code: CallErrorCode = /full/i.test(msg)
           ? 'CALL_FULL'
+          : /start a voice call|CALL_START_NOT_ALLOWED/i.test(msg)
+          ? 'PERMISSION_DENIED'
           : /member/i.test(msg)
           ? 'NOT_ROOM_MEMBER'
           : 'SIGNALING_ERROR';
@@ -1113,6 +1130,7 @@ export function useCall({
   }, [
     roomId,
     user.id,
+    callSlots,
     fetchIceServers,
     handleIncomingSignal,
     cleanupCall,

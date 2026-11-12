@@ -307,5 +307,51 @@ describe('Room Controls, Autoplay Fix, Kick & Cleanup', () => {
     assert.match(cleanupRouteCode, /storage_usage_metrics/);
     assert.match(cleanupRouteCode, /\.from\('videos'\)\s*\.remove/);
   });
+
+  it('6. Joiner resets cached YouTube resume position back to 0 when host has not started playback yet', async () => {
+    const adapter = createMockAdapter({
+      currentTime: 591.5,
+      duration: 1107,
+      isPlaying: false,
+      playbackRate: 1.0,
+      bufferedTime: 0,
+      isBuffering: false,
+    });
+    const channel = createMockChannel();
+    const driftUpdates = [];
+
+    const engine = new SyncEngine({
+      adapter,
+      channel,
+      roomId: 'room-1',
+      userId: 'viewer-1',
+      isHost: false,
+      canControl: false,
+      initialPlayback: {
+        position: 0,
+        isPlaying: false,
+        lastSyncedAt: new Date().toISOString(),
+      },
+      onDriftUpdated: (drift, synced) => {
+        driftUpdates.push({ drift, synced });
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(adapter.calls.includes('seek:0'), 'Viewer starting at cached 591.5s must immediately seek to 0');
+    assert.ok(adapter.calls.includes('pause'), 'Viewer must stay paused when host has not started');
+    assert.equal(adapter.getState().currentTime, 0);
+    assert.deepEqual(driftUpdates[driftUpdates.length - 1], { drift: 0, synced: true });
+
+    const ytCode = fs.readFileSync(
+      path.join(process.cwd(), 'src/core/adapters/YouTubePlayerAdapter.ts'),
+      'utf-8'
+    );
+    assert.match(ytCode, /start:\s*0/);
+    assert.match(ytCode, /cueVideoById\(cleanId,\s*0\)/);
+    assert.match(ytCode, /cueVideoById\(this\.currentVideoId,\s*clampedSeconds\)/);
+
+    engine.destroy();
+  });
 });
 

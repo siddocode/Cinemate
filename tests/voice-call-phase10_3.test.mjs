@@ -530,5 +530,85 @@ describe('Phase 10.3 — Core 2-Person WebRTC Engine', () => {
 
     mgr.destroy();
   });
+
+  it('6. PeerConnectionManager serializes overlapping/duplicate offers, caches answers, and suppresses spurious deferred offers', async () => {
+    let pc;
+    const answers = [];
+    const offers = [];
+    const errors = [];
+    let setRemoteCount = 0;
+
+    class StrictMockPC extends MockRTCPeerConnection {
+      async setRemoteDescription(desc) {
+        if (desc.type === 'offer') {
+          setRemoteCount += 1;
+          await new Promise((r) => setTimeout(r, 15));
+          // Fire negotiationneeded right after remoteDescription (simulating delayed addTrack task)
+          await super.setRemoteDescription(desc);
+          this.onnegotiationneeded?.();
+          return;
+        }
+        await super.setRemoteDescription(desc);
+      }
+
+      async createAnswer() {
+        if (this.signalingState !== 'have-remote-offer') {
+          throw new Error(`InvalidStateError: wrong state ${this.signalingState}`);
+        }
+        await new Promise((r) => setTimeout(r, 15));
+        return super.createAnswer();
+      }
+
+      async setLocalDescription(desc) {
+        if (desc?.type === 'answer' && this.signalingState !== 'have-remote-offer') {
+          throw new Error(`InvalidStateError: setLocalDescription(answer) in ${this.signalingState}`);
+        }
+        await super.setLocalDescription(desc);
+      }
+    }
+
+    const mgr = new PeerConnectionManager({
+      selfUserId: USER_A, // polite (< USER_B)
+      peerUserId: USER_B,
+      iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+      deferInitialOffer: true,
+      createPeerConnection: (cfg) => {
+        pc = new StrictMockPC(cfg);
+        return pc;
+      },
+      callbacks: {
+        onOffer: (sdp) => offers.push(sdp),
+        onAnswer: (sdp) => answers.push(sdp),
+        onIceCandidate: () => {},
+        onRemoteStream: () => {},
+        onStatusChange: () => {},
+        onError: (err) => errors.push(err),
+      },
+    });
+
+    const offerSignal = {
+      version: 1,
+      roomId: ROOM_ID,
+      targetUserId: USER_A,
+      callSessionId: SESS_B,
+      sentAt: Date.now(),
+      event: 'offer',
+      sdp: { type: 'offer', sdp: VALID_AUDIO_SDP },
+    };
+
+    // Simulate overlapping duplicate offer arriving mid-flight before answer finishes
+    await Promise.all([
+      mgr.handleSignal(offerSignal),
+      mgr.handleSignal({ ...offerSignal, sentAt: Date.now() + 1 }),
+    ]);
+
+    assert.equal(errors.length, 0, 'Must not emit Failed to process partner voice offer error');
+    assert.equal(setRemoteCount, 1, 'Duplicate identical offer must reuse cached answer without renegotiating');
+    assert.equal(answers.length, 2, 'Cached answer is re-emitted cleanly on retransmitted offer');
+    assert.equal(offers.length, 0, 'Polite deferred peer must not emit spurious offer from initial addTrack negotiationneeded');
+    assert.equal(pc.signalingState, 'stable');
+
+    mgr.destroy();
+  });
 });
 

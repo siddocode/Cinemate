@@ -97,6 +97,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
             modestbranding: 1,
             playsinline: 1,
             rel: 0,
+            start: 0,
             origin: typeof window !== 'undefined' ? window.location.origin : '',
           },
           events: {
@@ -114,6 +115,11 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
               if (!this.wantPlaying) {
                 try {
                   playerInstance.pauseVideo();
+                  if ((playerInstance.getCurrentTime() || 0) > 0.5) {
+                    this.pendingSeekTarget = 0;
+                    this.pendingSeekAt = Date.now();
+                    playerInstance.cueVideoById(cleanId, 0);
+                  }
                 } catch {
                   // ignore
                 }
@@ -238,12 +244,21 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
 
   async seekTo(seconds: number): Promise<void> {
     if (!this.player || !this.isReady || this.isDestroyed) return;
+    const clampedSeconds = Math.max(0, seconds);
     try {
-      this.pendingSeekTarget = seconds;
+      this.pendingSeekTarget = clampedSeconds;
       this.pendingSeekAt = Date.now();
-      this.player.seekTo(seconds, true);
+      const playerState = this.player.getPlayerState();
+      if (
+        !this.wantPlaying &&
+        (playerState === YTPlayerState.UNSTARTED || playerState === YTPlayerState.CUED)
+      ) {
+        this.player.cueVideoById(this.currentVideoId, clampedSeconds);
+      } else {
+        this.player.seekTo(clampedSeconds, true);
+      }
       const snapshot = this.getPlaybackState();
-      this.emit('SEEKED', { ...snapshot, currentTime: seconds });
+      this.emit('SEEKED', { ...snapshot, currentTime: clampedSeconds });
     } catch (err) {
       console.warn('[Syncora] seekTo error:', err);
     }
@@ -292,7 +307,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
 
       if (this.pendingSeekTarget !== null) {
         if (
-          Date.now() - this.pendingSeekAt < 800 &&
+          Date.now() - this.pendingSeekAt < 1500 &&
           Math.abs(rawCurrentTime - this.pendingSeekTarget) > 1.5
         ) {
           currentTime = this.pendingSeekTarget;

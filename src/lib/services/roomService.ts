@@ -22,6 +22,7 @@ function mapRoomRowToRoom(data: RoomRow): Room {
     lastSyncedAt: data.last_synced_at,
     isPrivate: data.is_private,
     allowGuestControl: data.allow_guest_control ?? false,
+    allowGuestCall: data.allow_guest_call ?? false,
     kickedUserIds: data.kicked_user_ids ?? [],
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -72,6 +73,7 @@ export const roomService = {
       lastSyncedAt: new Date().toISOString(),
       isPrivate: true,
       allowGuestControl: false,
+      allowGuestCall: false,
       kickedUserIds: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -745,7 +747,7 @@ export const roomService = {
   },
 
   /**
-   * Lists recent rooms the user created or joined, ordered by latest activity.
+   * Lists recent rooms hosted by the user, ordered by latest activity.
    */
   async getUserRooms(userId: string): Promise<UserRoomSummary[]> {
     if (!userId) return [];
@@ -753,12 +755,12 @@ export const roomService = {
     if (!isSupabaseConfigured()) {
       const summaries: UserRoomSummary[] = [];
       for (const room of devRooms.values()) {
-        const members = devMembers.get(room.id) || [];
-        const membership = members.find((m) => m.userId === userId);
-        if (room.hostId === userId || membership) {
+        if (room.hostId === userId) {
+          const members = devMembers.get(room.id) || [];
+          const membership = members.find((m) => m.userId === userId);
           summaries.push({
             ...room,
-            userRole: room.hostId === userId ? 'host' : (membership?.role || 'viewer'),
+            userRole: 'host',
             joinedAt: membership?.joinedAt || room.createdAt,
           });
         }
@@ -770,60 +772,31 @@ export const roomService = {
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const summaryMap = new Map<string, UserRoomSummary>();
+      const { data: hostedRows } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('host_id', userId)
+        .order('last_synced_at', { ascending: false })
+        .limit(9);
 
-      type MemberWithRoom = {
-        role: RoomRole;
-        joined_at: string;
-        rooms: RoomRow | null;
-      };
-
-      const [{ data: memberRows }, { data: hostedRows }] = await Promise.all([
-        supabase
-          .from('room_members')
-          .select('role, joined_at, rooms(*)')
-          .eq('user_id', userId)
-          .order('last_seen_at', { ascending: false })
-          .limit(12),
-        supabase
-          .from('rooms')
-          .select('*')
-          .eq('host_id', userId)
-          .order('last_synced_at', { ascending: false })
-          .limit(12),
-      ]);
-
-      if (Array.isArray(memberRows)) {
-        (memberRows as unknown as MemberWithRoom[]).forEach((row) => {
-          if (row.rooms) {
-            const mapped = mapRoomRowToRoom(row.rooms);
-            summaryMap.set(mapped.id, {
-              ...mapped,
-              userRole: mapped.hostId === userId ? 'host' : row.role,
-              joinedAt: row.joined_at,
-            });
-          }
-        });
+      if (!Array.isArray(hostedRows)) {
+        return [];
       }
 
-      if (Array.isArray(hostedRows)) {
-        hostedRows.forEach((row) => {
-          if (!summaryMap.has(row.id)) {
-            const mapped = mapRoomRowToRoom(row);
-            summaryMap.set(mapped.id, {
-              ...mapped,
-              userRole: 'host',
-              joinedAt: mapped.createdAt,
-            });
-          }
-        });
-      }
-
-      return Array.from(summaryMap.values())
+      return hostedRows
+        .filter((row) => row.host_id === userId)
+        .map((row) => {
+          const mapped = mapRoomRowToRoom(row);
+          return {
+            ...mapped,
+            userRole: 'host' as RoomRole,
+            joinedAt: mapped.createdAt,
+          };
+        })
         .sort((a, b) => new Date(b.lastSyncedAt).getTime() - new Date(a.lastSyncedAt).getTime())
         .slice(0, 9);
     } catch (err) {
-      console.warn('[Syncora] Failed to fetch user rooms:', err);
+      console.warn('[Syncora] Failed to fetch hosted rooms:', err);
       return [];
     }
   },
@@ -1092,6 +1065,48 @@ export const roomService = {
       return {
         success: false,
         error: err instanceof Error ? err.message : 'Failed to update playback permissions.',
+      };
+    }
+  },
+
+  /**
+   * Toggles whether non-host participants can start a new voice call (Host-only).
+   */
+  async setGuestCall(
+    roomId: string,
+    allowGuestCall: boolean
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) {
+      for (const room of devRooms.values()) {
+        if (room.id === roomId) {
+          room.allowGuestCall = allowGuestCall;
+        }
+      }
+      return { success: true };
+    }
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { error } = await supabase
+        .from('rooms')
+        .update({ allow_guest_call: allowGuestCall })
+        .eq('id', roomId);
+
+      if (error) {
+        if (error.code === 'PGRST204' || error.message?.includes('allow_guest_call')) {
+          return {
+            success: false,
+            error:
+              "Database is missing migration 010 ('allow_guest_call'). Run supabase/migrations/010_voice_call_initiation_permissions.sql in Supabase SQL Editor and retry.",
+          };
+        }
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to update voice call permissions.',
       };
     }
   },

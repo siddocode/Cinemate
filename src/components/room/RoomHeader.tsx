@@ -31,6 +31,7 @@ export interface RoomHeaderVoiceProps {
   isInCall: boolean;
   isLeaving?: boolean;
   isCallFull: boolean;
+  canStartCall?: boolean;
   isMuted: boolean;
   isLocalSpeaking: boolean;
   isPeerSpeaking: boolean;
@@ -400,6 +401,19 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                   <span className="sm:hidden">
                     {voiceCall.status === 'joining' ? 'Joining…' : 'Join Voice'}
                   </span>
+                </Button>
+              ) : voiceCall.canStartCall === false ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled
+                  className="h-7 sm:h-8 text-[11px] sm:text-xs px-2 sm:px-3 rounded-full whitespace-nowrap opacity-65"
+                  leftIcon={<MicOff className="w-3.5 h-3.5 text-[#CDBF9F]" />}
+                  title="Only the room host or permitted members can start a voice call. You can join once it begins."
+                  aria-label="Host starts voice call"
+                >
+                  <span className="hidden sm:inline">Host Starts Voice</span>
+                  <span className="sm:hidden">Voice (Host)</span>
                 </Button>
               ) : (
                 <Button

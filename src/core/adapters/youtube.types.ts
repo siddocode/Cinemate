@@ -26,6 +26,7 @@ export interface YTPlayerOptions {
     origin?: string;
     playsinline?: 0 | 1;
     rel?: 0 | 1;
+    start?: number;
   };
   events?: {
     onReady?: (event: YTPlayerEvent) => void;

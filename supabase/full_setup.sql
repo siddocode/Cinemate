@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS public.rooms (
     is_private BOOLEAN DEFAULT true NOT NULL,
     passcode_hash TEXT,
     allow_guest_control BOOLEAN DEFAULT false NOT NULL,
+    allow_guest_call BOOLEAN DEFAULT false NOT NULL,
     kicked_user_ids UUID[] DEFAULT '{}'::uuid[] NOT NULL,
     closed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW()) NOT NULL,
@@ -96,9 +97,10 @@ CREATE TABLE IF NOT EXISTS public.rooms (
 CREATE INDEX IF NOT EXISTS idx_rooms_code ON public.rooms(code);
 CREATE INDEX IF NOT EXISTS idx_rooms_host_id ON public.rooms(host_id);
 
--- Ensure upgrade idempotency if public.rooms already existed before migrations 003 / 007
+-- Ensure upgrade idempotency if public.rooms already existed before migrations 003 / 007 / 010
 ALTER TABLE public.rooms
   ADD COLUMN IF NOT EXISTS allow_guest_control BOOLEAN DEFAULT false NOT NULL,
+  ADD COLUMN IF NOT EXISTS allow_guest_call BOOLEAN DEFAULT false NOT NULL,
   ADD COLUMN IF NOT EXISTS kicked_user_ids UUID[] DEFAULT '{}'::uuid[] NOT NULL,
   ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
 
@@ -789,6 +791,7 @@ BEGIN
 
   IF v_uid <> OLD.host_id THEN
     IF NEW.allow_guest_control IS DISTINCT FROM OLD.allow_guest_control
+       OR NEW.allow_guest_call IS DISTINCT FROM OLD.allow_guest_call
        OR NEW.kicked_user_ids IS DISTINCT FROM OLD.kicked_user_ids
        OR NEW.code IS DISTINCT FROM OLD.code
        OR NEW.is_private IS DISTINCT FROM OLD.is_private
@@ -977,6 +980,10 @@ DECLARE
   v_count INTEGER;
   v_already_in BOOLEAN;
   v_host_expired BOOLEAN := FALSE;
+  v_is_host BOOLEAN := FALSE;
+  v_allow_guest_call BOOLEAN := FALSE;
+  v_kicked UUID[] := '{}'::uuid[];
+  v_is_restricted BOOLEAN := FALSE;
   v_now TIMESTAMPTZ := TIMEZONE('utc', NOW());
 BEGIN
   IF v_uid IS NULL OR p_room_id IS NULL THEN
@@ -1020,6 +1027,28 @@ BEGIN
   SELECT COUNT(*) INTO v_count
   FROM public.room_call_participants rcp
   WHERE rcp.room_id = p_room_id;
+
+  -- Only permitted initiators may start a new call when none is active (v_count = 0)
+  IF v_count = 0 THEN
+    v_is_host := public.is_room_host(p_room_id, v_uid);
+    SELECT COALESCE(r.allow_guest_call, false), COALESCE(r.kicked_user_ids, '{}'::uuid[])
+    INTO v_allow_guest_call, v_kicked
+    FROM public.rooms r
+    WHERE r.id = p_room_id;
+
+    v_is_restricted := NOT v_is_host AND (v_uid = ANY(v_kicked));
+
+    IF NOT (
+      v_is_host
+      OR (
+        NOT v_is_restricted
+        AND (v_allow_guest_call OR public.is_room_host_or_cohost(p_room_id, v_uid))
+      )
+    ) THEN
+      RAISE EXCEPTION 'Only the room host or permitted members can start a voice call.'
+        USING ERRCODE = '42501', HINT = 'CALL_START_NOT_ALLOWED';
+    END IF;
+  END IF;
 
   IF NOT v_already_in AND v_count >= v_max THEN
     RAISE EXCEPTION 'Voice call is full (%/%).', v_max, v_max

@@ -316,14 +316,19 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
       .on(
         'broadcast',
         { event: 'ROOM_SETTINGS_CHANGE' },
-        (msg: { payload: { allowGuestControl: boolean } }) => {
+        (msg: { payload: { allowGuestControl?: boolean; allowGuestCall?: boolean } }) => {
           const payload = msg?.payload;
           if (!payload) return;
           setRoom((prev) =>
             prev
               ? {
                   ...prev,
-                  allowGuestControl: payload.allowGuestControl,
+                  ...(typeof payload.allowGuestControl === 'boolean'
+                    ? { allowGuestControl: payload.allowGuestControl }
+                    : {}),
+                  ...(typeof payload.allowGuestCall === 'boolean'
+                    ? { allowGuestCall: payload.allowGuestCall }
+                    : {}),
                 }
               : null
           );
@@ -376,6 +381,7 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
                   isPlaying: updated.is_playing,
                   lastSyncedAt: updated.last_synced_at,
                   allowGuestControl: updated.allow_guest_control ?? prev.allowGuestControl,
+                  allowGuestCall: updated.allow_guest_call ?? prev.allowGuestCall,
                   kickedUserIds: updated.kicked_user_ids ?? prev.kickedUserIds,
                 }
               : null
@@ -555,6 +561,8 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
   const isCoHost = !isRestrictedViewer && role === 'co-host';
   const canControl =
     isHost || (!isRestrictedViewer && (isCoHost || Boolean(room?.allowGuestControl)));
+  const canStartCall =
+    isHost || (!isRestrictedViewer && (isCoHost || Boolean(room?.allowGuestCall)));
 
   // Partner is the other participant in the room
   const partnerPresence = presenceList.find((p) => p.userId !== user.id) || null;
@@ -730,6 +738,29 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
     [roomId, isHost, channel]
   );
 
+  // 9b. Toggle whether non-host members can initiate new voice calls (Host-only)
+  const toggleGuestCall = useCallback(
+    async (allowGuestCall: boolean) => {
+      if (!roomId || !isHost) return;
+      const res = await roomService.setGuestCall(roomId, allowGuestCall);
+      if (res.success) {
+        setRoom((prev) => (prev ? { ...prev, allowGuestCall } : null));
+        if (channel) {
+          void channel.send({
+            type: 'broadcast',
+            event: 'ROOM_SETTINGS_CHANGE',
+            payload: {
+              allowGuestCall,
+              sentAt: Date.now(),
+            },
+          });
+        }
+      }
+      return res;
+    },
+    [roomId, isHost, channel]
+  );
+
   // 10. Close & delete room when Host explicitly leaves (cleans up Storage & kicks active session to closed state)
   const closeRoom = useCallback(async () => {
     if (!roomId || !isHost) return;
@@ -761,6 +792,7 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
     isHost,
     isCoHost,
     canControl,
+    canStartCall,
     members,
     duoStatus,
     presenceList,
@@ -778,6 +810,7 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
     kickMember,
     updateMemberRole,
     toggleGuestControl,
+    toggleGuestCall,
     closeRoom,
     channel,
   };
