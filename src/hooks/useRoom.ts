@@ -5,6 +5,7 @@ import { Room, RoomMember, RoomRole, DuoStatus, ParticipantPresence } from '@/co
 import { VideoSourceType } from '@/core/types/player.types';
 import { useSession } from './useSession';
 import { roomService } from '@/lib/services/roomService';
+import { storageService } from '@/lib/services/storageService';
 import {
   getAuthenticatedAccessToken,
   getSupabaseBrowserClient,
@@ -31,12 +32,16 @@ interface RawPresence {
   joinedAt?: number;
 }
 
-export function useRoom(roomCode: string, initialTitle?: string) {
+export function useRoom(roomCode: string, initialTitle?: string, allowCreate = false) {
   const { user, isInitialized } = useSession();
   const [room, setRoom] = useState<Room | null>(null);
   const [role, setRole] = useState<RoomRole>('viewer');
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [presenceList, setPresenceList] = useState<ParticipantPresence[]>([]);
+  const [isKicked, setIsKicked] = useState(false);
+  const [kickedMessage, setKickedMessage] = useState<string | null>(null);
+  const [isRoomClosed, setIsRoomClosed] = useState(false);
+  const [roomClosedMessage, setRoomClosedMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [realtimeError, setRealtimeError] = useState<string | null>(null);
@@ -88,15 +93,33 @@ export function useRoom(roomCode: string, initialTitle?: string) {
         const currentUser = userRef.current;
         const resolvedTitle =
           initialTitleRef.current?.trim().slice(0, 100) || 'Our Watch Party';
-        const roomRes = await roomService.getOrCreateRoom({
-          code: roomCode,
-          title: resolvedTitle,
-          host: currentUser,
-        });
+        let loadedRoom: Room | null = null;
+        let loadError: string | undefined;
 
-        const loadedRoom = roomRes.room;
+        if (allowCreate) {
+          const roomRes = await roomService.getOrCreateRoom({
+            code: roomCode,
+            title: resolvedTitle,
+            host: currentUser,
+          });
+          loadedRoom = roomRes.room;
+          loadError = roomRes.error;
+        } else {
+          loadedRoom = await roomService.getRoomByCode(roomCode);
+          if (!loadedRoom) {
+            if (isMounted) {
+              setIsRoomClosed(true);
+              setRoomClosedMessage(
+                'This screening room was closed by the host or no longer exists.'
+              );
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
+
         if (!loadedRoom) {
-          if (isMounted) setError(roomRes.error || 'Failed to initialize room.');
+          if (isMounted) setError(loadError || 'Failed to initialize room.');
           setIsLoading(false);
           return;
         }
@@ -139,7 +162,7 @@ export function useRoom(roomCode: string, initialTitle?: string) {
     return () => {
       isMounted = false;
     };
-  }, [roomCode, user.id, isInitialized]);
+  }, [roomCode, user.id, isInitialized, allowCreate]);
 
   // 2. Realtime Channel Subscription (Presence, Room Updates, & Chat Inserts)
   const roomId = room?.id;
@@ -199,10 +222,12 @@ export function useRoom(roomCode: string, initialTitle?: string) {
         }
         hadPartner = hasPartnerNow;
 
-        // Check if host is present in active presence
+        // Check if host is present in active presence.
+        // If host leaves and does not reconnect within grace window, close the room instead of transferring authority.
+        const isHostSelf = roomHostIdRef.current === user.id;
         const isHostOnline = active.some((p) => p.userId === roomHostIdRef.current);
-        if (!isHostOnline && active.length > 0) {
-          // Host disconnected! Start grace period if not already running
+        if (!isHostSelf && !isHostOnline && active.length > 0 && roomHostIdRef.current) {
+          // Host disconnected! Start countdown before closing the room for remaining viewers
           if (!graceTimerRef.current) {
             let timeLeft = SYNC_CONSTANTS.HOST_GRACE_PERIOD_MS / 1000;
             setHostGraceSecondsLeft(timeLeft);
@@ -215,19 +240,14 @@ export function useRoom(roomCode: string, initialTitle?: string) {
                 if (graceTimerRef.current) clearInterval(graceTimerRef.current);
                 graceTimerRef.current = null;
                 setHostGraceSecondsLeft(null);
-
-                // Auto failover: promote oldest active participant
-                const sortedByJoin = [...active].sort((a, b) => a.joinedAt - b.joinedAt);
-                const nextHost = sortedByJoin[0];
-                if (nextHost) {
-                  roomService.transferHost(currentRoomId, nextHost.userId);
-                  setRoom((prev) => (prev ? { ...prev, hostId: nextHost.userId } : null));
-                }
+                void roomChannel.untrack();
+                setIsRoomClosed(true);
+                setRoomClosedMessage('This screening room has been closed because the host left.');
               }
             }, 1000);
           }
         } else {
-          // Host is online; cancel any active grace period
+          // Host is online; cancel any active close countdown
           if (graceTimerRef.current) {
             clearInterval(graceTimerRef.current);
             graceTimerRef.current = null;
@@ -261,6 +281,80 @@ export function useRoom(roomCode: string, initialTitle?: string) {
         }
       )
       .on(
+        'broadcast',
+        { event: 'KICK_MEMBER' },
+        (msg: { payload: { kickedUserId: string; reason?: string } }) => {
+          const payload = msg?.payload;
+          if (!payload) return;
+          if (payload.kickedUserId === user.id) {
+            void roomChannel.untrack();
+            setIsKicked(true);
+            setKickedMessage(payload.reason || 'You have been removed from this room by the host.');
+          } else {
+            setMembers((prev) => prev.filter((m) => m.userId !== payload.kickedUserId));
+            setPresenceList((prev) => prev.filter((p) => p.userId !== payload.kickedUserId));
+          }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'ROLE_CHANGE' },
+        (msg: { payload: { userId: string; newRole: RoomRole } }) => {
+          const payload = msg?.payload;
+          if (!payload) return;
+          if (payload.userId === user.id) {
+            setRole(payload.newRole);
+          }
+          setMembers((prev) =>
+            prev.map((m) => (m.userId === payload.userId ? { ...m, role: payload.newRole } : m))
+          );
+          setPresenceList((prev) =>
+            prev.map((p) => (p.userId === payload.userId ? { ...p, role: payload.newRole } : p))
+          );
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'ROOM_SETTINGS_CHANGE' },
+        (msg: { payload: { allowGuestControl: boolean } }) => {
+          const payload = msg?.payload;
+          if (!payload) return;
+          setRoom((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  allowGuestControl: payload.allowGuestControl,
+                }
+              : null
+          );
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'ROOM_CLOSED' },
+        (msg: { payload?: { reason?: string } }) => {
+          void roomChannel.untrack();
+          setIsRoomClosed(true);
+          setRoomClosedMessage(
+            msg?.payload?.reason || 'The host has left and closed this screening room.'
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'rooms',
+          filter: `id=eq.${currentRoomId}`,
+        },
+        () => {
+          void roomChannel.untrack();
+          setIsRoomClosed(true);
+          setRoomClosedMessage('The host has left and closed this screening room.');
+        }
+      )
+      .on(
         'postgres_changes',
         {
           event: 'UPDATE',
@@ -281,6 +375,8 @@ export function useRoom(roomCode: string, initialTitle?: string) {
                   currentPosition: updated.current_position,
                   isPlaying: updated.is_playing,
                   lastSyncedAt: updated.last_synced_at,
+                  allowGuestControl: updated.allow_guest_control ?? prev.allowGuestControl,
+                  kickedUserIds: updated.kicked_user_ids ?? prev.kickedUserIds,
                 }
               : null
           );
@@ -296,6 +392,46 @@ export function useRoom(roomCode: string, initialTitle?: string) {
         },
         (payload) => {
           emitRoomChatInsert(currentRoomId, payload.new as RealtimeChatMessageRow);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'room_members',
+          filter: `room_id=eq.${currentRoomId}`,
+        },
+        (payload) => {
+          const newRow = payload.new as { user_id?: string; role?: RoomRole } | undefined;
+          const oldRow = payload.old as { user_id?: string } | undefined;
+
+          if (payload.eventType === 'INSERT' && newRow?.user_id) {
+            void roomService.getRoomMembers(currentRoomId).then((refreshed) => {
+              if (!isDisposed && refreshed.length > 0) {
+                setMembers(refreshed);
+              }
+            });
+          } else if (payload.eventType === 'UPDATE' && newRow?.user_id && newRow.role) {
+            if (newRow.user_id === user.id) {
+              setRole(newRow.role);
+            }
+            setMembers((prev) =>
+              prev.map((m) => (m.userId === newRow.user_id ? { ...m, role: newRow.role! } : m))
+            );
+            setPresenceList((prev) =>
+              prev.map((p) => (p.userId === newRow.user_id ? { ...p, role: newRow.role! } : p))
+            );
+          } else if (payload.eventType === 'DELETE' && oldRow?.user_id) {
+            if (oldRow.user_id === user.id) {
+              void roomChannel.untrack();
+              setIsKicked(true);
+              setKickedMessage('You have been removed from this room by the host.');
+            } else {
+              setMembers((prev) => prev.filter((m) => m.userId !== oldRow.user_id));
+              setPresenceList((prev) => prev.filter((p) => p.userId !== oldRow.user_id));
+            }
+          }
         }
       )
       .on(
@@ -377,8 +513,14 @@ export function useRoom(roomCode: string, initialTitle?: string) {
     });
   }, [channel, user.id, user.username, role, userJoinedAt]);
 
-  // 3. Compute Duo Status (You & Partner)
-  const isHost = room?.hostId === user.id;
+  // 3. Compute Duo Status & Control Authority
+  // Previously kicked participants can rejoin as view-only, but NEVER hold Co-Host or Shared Controls
+  const isHost = room?.hostId === user.id || role === 'host';
+  const isRestrictedViewer =
+    !isHost && Boolean(room?.kickedUserIds?.includes(user.id));
+  const isCoHost = !isRestrictedViewer && role === 'co-host';
+  const canControl =
+    isHost || (!isRestrictedViewer && (isCoHost || Boolean(room?.allowGuestControl)));
 
   // Partner is the other participant in the room
   const partnerPresence = presenceList.find((p) => p.userId !== user.id) || null;
@@ -396,10 +538,19 @@ export function useRoom(roomCode: string, initialTitle?: string) {
     isPartnerConnected,
   };
 
-  // 4. Update Video Action (Host only) — updates DB AND broadcasts instantly to connected viewers
+  // 4. Update Video Action (Host, Co-Host or permitted controllers) — updates DB AND broadcasts instantly to connected viewers
   const updateVideo = useCallback(
     async (newVideoUrl: string, videoType: VideoSourceType = 'youtube') => {
-      if (!room || !isHost) return;
+      if (!room || !canControl) return;
+
+      // Clean up previous uploaded video file from storage & metrics to avoid unneeded Supabase load
+      if (room.videoType === 'upload' && room.videoUrl && room.videoUrl !== newVideoUrl) {
+        const newMatch = videoType === 'upload' ? newVideoUrl.match(/videos\/([^?#]+)/) : null;
+        const excludePath = newMatch?.[1] ? decodeURIComponent(newMatch[1]) : undefined;
+        void storageService.cleanupRoomVideos(room.id, excludePath).catch((err) => {
+          console.warn('[Syncora] Non-blocking storage cleanup notice:', err);
+        });
+      }
 
       setRoom((prev) =>
         prev
@@ -427,19 +578,19 @@ export function useRoom(roomCode: string, initialTitle?: string) {
         videoType,
       });
     },
-    [room, isHost, channel, user.id]
+    [room, canControl, channel, user.id]
   );
 
-  // 5. Persist playback snapshot to DB on host play/pause/seek
+  // 5. Persist playback snapshot to DB on controller play/pause/seek
   const persistPlaybackSnapshot = useCallback(
     (position: number, isPlaying: boolean) => {
-      if (!roomId || !isHost) return;
+      if (!roomId || !canControl) return;
       void roomService.updateRoomPlayback(roomId, {
         currentPosition: position,
         isPlaying,
       });
     },
-    [roomId, isHost]
+    [roomId, canControl]
   );
 
   // 6. Sync video URL if viewer detects mismatch from host SYNC_STATE
@@ -458,6 +609,114 @@ export function useRoom(roomCode: string, initialTitle?: string) {
     []
   );
 
+  // 7. Kick a participant from the room (Host-only)
+  const kickMember = useCallback(
+    async (targetUserId: string) => {
+      if (!roomId || !isHost) return;
+      const res = await roomService.kickMember(roomId, targetUserId);
+      if (res.success) {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                kickedUserIds: prev.kickedUserIds?.includes(targetUserId)
+                  ? prev.kickedUserIds
+                  : [...(prev.kickedUserIds || []), targetUserId],
+              }
+            : null
+        );
+        setMembers((prev) => prev.filter((m) => m.userId !== targetUserId));
+        setPresenceList((prev) => prev.filter((p) => p.userId !== targetUserId));
+        if (channel) {
+          void channel.send({
+            type: 'broadcast',
+            event: 'KICK_MEMBER',
+            payload: {
+              kickedUserId: targetUserId,
+              reason: 'You have been removed from this room by the host.',
+              sentAt: Date.now(),
+            },
+          });
+        }
+      }
+      return res;
+    },
+    [roomId, isHost, channel]
+  );
+
+  // 8. Promote / demote member role (Host-only)
+  const updateMemberRole = useCallback(
+    async (targetUserId: string, newRole: 'co-host' | 'viewer') => {
+      if (!roomId || !isHost) return;
+      const res = await roomService.updateMemberRole(roomId, targetUserId, newRole);
+      if (res.success) {
+        setMembers((prev) =>
+          prev.map((m) => (m.userId === targetUserId ? { ...m, role: newRole } : m))
+        );
+        setPresenceList((prev) =>
+          prev.map((p) => (p.userId === targetUserId ? { ...p, role: newRole } : p))
+        );
+        if (channel) {
+          void channel.send({
+            type: 'broadcast',
+            event: 'ROLE_CHANGE',
+            payload: {
+              userId: targetUserId,
+              newRole,
+              sentAt: Date.now(),
+            },
+          });
+        }
+      }
+      return res;
+    },
+    [roomId, isHost, channel]
+  );
+
+  // 9. Toggle whether all members have playback controls (Host-only)
+  const toggleGuestControl = useCallback(
+    async (allowGuestControl: boolean) => {
+      if (!roomId || !isHost) return;
+      const res = await roomService.setGuestControl(roomId, allowGuestControl);
+      if (res.success) {
+        setRoom((prev) => (prev ? { ...prev, allowGuestControl } : null));
+        if (channel) {
+          void channel.send({
+            type: 'broadcast',
+            event: 'ROOM_SETTINGS_CHANGE',
+            payload: {
+              allowGuestControl,
+              sentAt: Date.now(),
+            },
+          });
+        }
+      }
+      return res;
+    },
+    [roomId, isHost, channel]
+  );
+
+  // 10. Close & delete room when Host explicitly leaves (cleans up Storage & kicks active session to closed state)
+  const closeRoom = useCallback(async () => {
+    if (!roomId || !isHost) return;
+    if (channel) {
+      try {
+        await channel.send({
+          type: 'broadcast',
+          event: 'ROOM_CLOSED',
+          payload: {
+            reason: 'The host has left and closed this screening room.',
+            sentAt: Date.now(),
+          },
+        });
+      } catch (err) {
+        console.warn('[Syncora] Non-blocking ROOM_CLOSED broadcast notice:', err);
+      }
+    }
+
+    await roomService.leaveOrDeleteRoom(roomId, user.id, true);
+  }, [roomId, isHost, channel, user.id]);
+
   const effectiveIsLoading = isInitialized && !user.id ? false : isLoading;
   const effectiveError =
     isInitialized && !user.id ? 'Please sign in to create or join a watch room.' : error;
@@ -466,9 +725,15 @@ export function useRoom(roomCode: string, initialTitle?: string) {
     room,
     role,
     isHost,
+    isCoHost,
+    canControl,
     members,
     duoStatus,
     presenceList,
+    isKicked,
+    kickedMessage,
+    isRoomClosed,
+    roomClosedMessage,
     isLoading: effectiveIsLoading,
     error: effectiveError,
     realtimeError,
@@ -476,6 +741,10 @@ export function useRoom(roomCode: string, initialTitle?: string) {
     updateVideo,
     persistPlaybackSnapshot,
     applyRemoteVideo,
+    kickMember,
+    updateMemberRole,
+    toggleGuestControl,
+    closeRoom,
     channel,
   };
 }

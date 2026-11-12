@@ -9,6 +9,7 @@ export interface SyncEngineConfig {
   roomId: string;
   userId: string;
   isHost: boolean;
+  canControl?: boolean;
   videoUrl?: string;
   videoType?: VideoSourceType;
   initialPlayback?: {
@@ -27,12 +28,15 @@ export class SyncEngine {
   private roomId: string;
   private userId: string;
   private isHost: boolean;
+  private canControl: boolean;
+  private hostIsPlaying: boolean;
   private videoUrl?: string;
   private videoType?: VideoSourceType;
 
   private isRemoteSyncing: boolean = false;
   private isDestroyed: boolean = false;
   private hasReceivedRemoteSync: boolean = false;
+  private lastLocalControlAt: number = 0;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private heartbeatTickCount: number = 0;
   private syncRetryTimers: NodeJS.Timeout[] = [];
@@ -47,6 +51,8 @@ export class SyncEngine {
     this.roomId = config.roomId;
     this.userId = config.userId;
     this.isHost = config.isHost;
+    this.canControl = config.canControl ?? config.isHost;
+    this.hostIsPlaying = Boolean(config.initialPlayback?.isPlaying);
     this.videoUrl = config.videoUrl;
     this.videoType = config.videoType;
     this.onDriftUpdated = config.onDriftUpdated;
@@ -61,6 +67,11 @@ export class SyncEngine {
       this.broadcastState('HEARTBEAT', state.currentTime, state.isPlaying);
       this.startHostHeartbeat();
     } else {
+      if (!this.hostIsPlaying) {
+        // Enforce pause immediately so newly loaded player stays paused while host is paused
+        void this.adapter.pause();
+      }
+
       if (
         config.initialPlayback &&
         (config.initialPlayback.isPlaying || config.initialPlayback.position > 0.5)
@@ -86,6 +97,8 @@ export class SyncEngine {
       }
       if (isPlaying) {
         await this.adapter.play();
+      } else {
+        await this.adapter.pause();
       }
     } finally {
       setTimeout(() => {
@@ -117,10 +130,15 @@ export class SyncEngine {
   public updateRole(isHost: boolean) {
     this.isHost = isHost;
     if (this.isHost) {
+      this.canControl = true;
       this.startHostHeartbeat();
     } else {
       this.stopHostHeartbeat();
     }
+  }
+
+  public updateCanControl(canControl: boolean) {
+    this.canControl = canControl;
   }
 
   public updateChannel(channel: RealtimeChannel | null) {
@@ -131,15 +149,22 @@ export class SyncEngine {
   private setupListeners() {
     this.adapter.on('PLAY', (state) => {
       if (this.isDestroyed || this.isRemoteSyncing) return;
-      if (this.isHost) {
+      if (this.canControl) {
+        this.lastLocalControlAt = Date.now();
+        this.hostIsPlaying = true;
         this.broadcastState('PLAY', state.currentTime, true);
         this.onPersistSnapshot?.(state.currentTime, true);
+      } else if (!this.hostIsPlaying) {
+        // Viewer player started playing unexpectedly while host is paused: pause immediately!
+        void this.adapter.pause();
       }
     });
 
     this.adapter.on('PAUSE', (state) => {
       if (this.isDestroyed || this.isRemoteSyncing) return;
-      if (this.isHost) {
+      if (this.canControl) {
+        this.lastLocalControlAt = Date.now();
+        this.hostIsPlaying = false;
         this.broadcastState('PAUSE', state.currentTime, false);
         this.onPersistSnapshot?.(state.currentTime, false);
       }
@@ -147,7 +172,8 @@ export class SyncEngine {
 
     this.adapter.on('SEEKED', (state) => {
       if (this.isDestroyed || this.isRemoteSyncing) return;
-      if (this.isHost) {
+      if (this.canControl) {
+        this.lastLocalControlAt = Date.now();
         this.broadcastState('SEEK', state.currentTime, state.isPlaying);
         this.onPersistSnapshot?.(state.currentTime, state.isPlaying);
       }
@@ -174,7 +200,7 @@ export class SyncEngine {
   }
 
   /**
-   * Broadcasts playback state as Host to all viewers in the room.
+   * Broadcasts playback state as Host/Controller to all members in the room.
    */
   public broadcastState(
     action: SyncAction,
@@ -182,7 +208,7 @@ export class SyncEngine {
     isPlaying?: boolean,
     videoUrl?: string
   ) {
-    if (!this.isHost || !this.channel || this.isDestroyed) return;
+    if (!this.canControl || !this.channel || this.isDestroyed) return;
 
     const state = this.adapter.getPlaybackState();
     const payload: SyncStatePayload = {
@@ -231,11 +257,25 @@ export class SyncEngine {
    */
   private async handleIncomingSync(payload: SyncStatePayload) {
     if (this.isDestroyed) return;
-    // Hosts ignore sync broadcasts from other users
-    if (this.isHost) return;
+    // Don't process self broadcasts
+    if (payload.senderId === this.userId) return;
     if (payload.roomId !== this.roomId) return;
 
+    // If current user is host and the broadcast is a routine heartbeat from someone else, ignore
+    if (this.isHost && payload.action === 'HEARTBEAT') return;
+
+    // Avoid having a routine host heartbeat revert a delegated controller's just-triggered action
+    if (
+      this.canControl &&
+      !this.isHost &&
+      payload.action === 'HEARTBEAT' &&
+      Date.now() - this.lastLocalControlAt < 2000
+    ) {
+      return;
+    }
+
     this.hasReceivedRemoteSync = true;
+    this.hostIsPlaying = payload.isPlaying;
     this.clearSyncRetries();
 
     if (payload.videoUrl && this.videoUrl && payload.videoUrl !== this.videoUrl) {
@@ -277,9 +317,12 @@ export class SyncEngine {
       }
 
       // 2. Play / Pause State Reconciliation
-      if (payload.isPlaying && !localState.isPlaying) {
-        await this.adapter.play();
-      } else if (!payload.isPlaying && localState.isPlaying) {
+      if (payload.isPlaying) {
+        if (!localState.isPlaying) {
+          await this.adapter.play();
+        }
+      } else {
+        // Authoritative state is PAUSED: always enforce pause!
         await this.adapter.pause();
       }
 

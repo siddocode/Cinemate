@@ -13,8 +13,16 @@ async function RoomContent({ params, searchParams }: RoomPageProps) {
   const roomCode = resolvedParams.code;
   const videoId = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : undefined;
   const title = typeof resolvedSearchParams.title === 'string' ? resolvedSearchParams.title : undefined;
+  const allowCreate = resolvedSearchParams.create === '1';
 
-  return <RoomView roomCode={roomCode} initialVideoId={videoId} initialTitle={title} />;
+  return (
+    <RoomView
+      roomCode={roomCode}
+      initialVideoId={videoId}
+      initialTitle={title}
+      allowCreate={allowCreate}
+    />
+  );
 }
 
 export default function RoomPage(props: RoomPageProps) {

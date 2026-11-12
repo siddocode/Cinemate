@@ -19,6 +19,7 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
     const video = document.createElement('video');
     video.className = 'w-full h-full object-contain bg-black';
     video.playsInline = true;
+    video.autoplay = false;
     video.crossOrigin = 'anonymous';
     // Bandwidth optimization: 'metadata' prevents browsers from downloading the entire video
     // before playback begins. Range requests fetch only chunks as needed during active playback.

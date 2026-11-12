@@ -153,3 +153,15 @@
 - [x] Re-verify PGlite SQL suite (75/75), TypeScript (`npx tsc --noEmit`), ESLint (`npm run lint`), automated tests (`npm test`), and Next.js production build (`npm run build`).
 - [ ] User manual post-deployment matrix (run after deploying to Supabase + Vercel with Cloudflare TURN): 2-person call, 3rd viewer `2/2` cap, laptop Wi-Fi ↔ mobile Jio 4G/5G, mic denial, simultaneous join, network interruption, and refresh/exit cleanup.
 
+---
+
+## Phase 11 — Room Playback Delegation, Kick Member, Autoplay Fix & In-Room Video Cleanup
+- [x] Fix joiner autoplay-on-join when host/admin is paused (`YouTubePlayerAdapter` `onReady` pause guard & `cueVideoById`, `HTML5VideoAdapter` `autoplay = false`, `SyncEngine` paused enforcement & `PLAY` interception).
+- [x] Add room-wide playback control delegation (`allow_guest_control` toggle) and per-member `co-host` promotion/demotion across database (`007_room_permissions_and_kick.sql` / `full_setup.sql`), `roomService`, `SyncEngine`, `useSyncEngine`, `useRoom`, and UI (`RoomParticipantsModal`, `RoomHeader`, `UniversalPlayer`).
+- [x] Add host ability to kick/remove participants from a room (`kicked_user_ids` array + `enforce_kicked_member_viewer_only()` trigger so kicked users can rejoin only as permanent view-only viewers — never Co-Host or Shared Controls, `guard_room_settings_update()` trigger, `KICK_MEMBER` Realtime broadcast with presence untrack & call cleanup, and viewer removal screen in `RoomView`).
+- [x] Improve in-room video switching & upload replacement (`ChangeVideoModal` reset & pre-upload cleanup, `DELETE /api/rooms/[id]/video` admin cleanup route, `storageService.cleanupRoomVideos`) so stale Supabase Storage objects and `storage_usage_metrics` are cleaned up automatically.
+- [x] Remove host auto-failover and close/delete the room (`ROOM_CLOSED` broadcast + storage cleanup) when the host leaves or stays disconnected past the grace window, while preventing non-creator room recreation (`?create=1`).
+- [x] Tighten home & auth hero/card spacing (`src/app/page.tsx`, `src/app/auth/page.tsx`, `RecentRoomsSection.tsx`).
+- [x] Add unit/integration tests (`tests/room-controls-and-sync-fixes.test.mjs`) and update documentation (`CURRENT_STATE.md`, `TASKS.md`).
+- [ ] User manual SQL migration: run `supabase/migrations/007_room_permissions_and_kick.sql` (or updated `supabase/full_setup.sql`) in the Supabase SQL Editor.
+

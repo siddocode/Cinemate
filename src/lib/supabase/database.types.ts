@@ -49,6 +49,8 @@ export interface Database {
           last_synced_at: string;
           is_private: boolean;
           passcode_hash: string | null;
+          allow_guest_control?: boolean;
+          kicked_user_ids?: string[];
           closed_at?: string | null;
           created_at: string;
           updated_at: string;
@@ -65,6 +67,8 @@ export interface Database {
           last_synced_at?: string;
           is_private?: boolean;
           passcode_hash?: string | null;
+          allow_guest_control?: boolean;
+          kicked_user_ids?: string[];
           closed_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -81,6 +85,8 @@ export interface Database {
           last_synced_at?: string;
           is_private?: boolean;
           passcode_hash?: string | null;
+          allow_guest_control?: boolean;
+          kicked_user_ids?: string[];
           closed_at?: string | null;
           created_at?: string;
           updated_at?: string;

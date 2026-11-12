@@ -80,7 +80,7 @@ export function useChat({ roomId, user, channel }: UseChatProps) {
     const supabase = getSupabaseBrowserClient();
 
     const handleIncomingRow = async (newRow: RealtimeChatMessageRow) => {
-      let senderName = user.id === newRow.user_id ? user.username : 'Partner';
+      let senderName = user.id === newRow.user_id ? user.username : 'Viewer';
 
       if (user.id !== newRow.user_id) {
         const { data: profile } = await supabase

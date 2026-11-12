@@ -115,4 +115,26 @@ export const storageService = {
   async deleteVideo(filePath: string): Promise<boolean> {
     return this.getProvider().deleteVideo(filePath);
   },
+
+  /**
+   * Cleans up previous uploaded video files for a room (both Storage objects and usage metrics)
+   * when replacing a video or switching to a URL/YouTube source.
+   */
+  async cleanupRoomVideos(roomId: string, excludePath?: string): Promise<void> {
+    bandwidthService.markRoomUploadsDeleted(roomId);
+
+    if (!isSupabaseConfigured() || typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      await fetch(`/api/rooms/${encodeURIComponent(roomId)}/video`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(excludePath ? { excludePath } : {}),
+      });
+    } catch {
+      // Non-blocking cleanup fallback
+    }
+  },
 };

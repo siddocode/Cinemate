@@ -21,6 +21,8 @@ function mapRoomRowToRoom(data: RoomRow): Room {
     isPlaying: data.is_playing,
     lastSyncedAt: data.last_synced_at,
     isPrivate: data.is_private,
+    allowGuestControl: data.allow_guest_control ?? false,
+    kickedUserIds: data.kicked_user_ids ?? [],
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
@@ -69,6 +71,8 @@ export const roomService = {
       isPlaying: false,
       lastSyncedAt: new Date().toISOString(),
       isPrivate: true,
+      allowGuestControl: false,
+      kickedUserIds: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -338,6 +342,15 @@ export const roomService = {
         return { member: existing, role: existing.role };
       }
 
+      // Check if user was previously kicked in dev mode (allowed to rejoin as view-only only)
+      let isPreviouslyKickedDev = false;
+      for (const room of devRooms.values()) {
+        if (room.id === params.roomId && room.kickedUserIds?.includes(params.user.id)) {
+          isPreviouslyKickedDev = true;
+          break;
+        }
+      }
+
       // Enforce participant limit to prevent viral egress spikes
       if (members.length >= SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS) {
         return {
@@ -347,8 +360,9 @@ export const roomService = {
         };
       }
 
-      // If no members, first is host, otherwise viewer
-      const role: RoomRole = members.length === 0 ? 'host' : 'viewer';
+      // If no members, first is host, otherwise viewer (never co-host if previously kicked)
+      const role: RoomRole =
+        members.length === 0 && !isPreviouslyKickedDev ? 'host' : 'viewer';
       const newMember: RoomMember = {
         id: crypto.randomUUID ? crypto.randomUUID() : `member-${Date.now()}`,
         roomId: params.roomId,
@@ -367,6 +381,17 @@ export const roomService = {
       await this.ensureProfile(params.user);
       const supabase = getSupabaseBrowserClient();
 
+      // Check if user was previously kicked from this room (rejoin allowed as view-only, never Co-Host/control)
+      const { data: roomCheck } = await supabase
+        .from('rooms')
+        .select('host_id, kicked_user_ids')
+        .eq('id', params.roomId)
+        .maybeSingle();
+
+      const isPreviouslyKicked = Boolean(
+        roomCheck?.kicked_user_ids && roomCheck.kicked_user_ids.includes(params.user.id)
+      );
+
       // Check current participant count and existing membership
       const { count: memberCount } = await supabase
         .from('room_members')
@@ -375,7 +400,7 @@ export const roomService = {
 
       const { data: existingMember } = await supabase
         .from('room_members')
-        .select('id')
+        .select('id, role, joined_at, last_seen_at')
         .eq('room_id', params.roomId)
         .eq('user_id', params.user.id)
         .maybeSingle();
@@ -399,22 +424,44 @@ export const roomService = {
         isHost = roomData?.host_id === params.user.id;
       }
 
-      const role: RoomRole = isHost ? 'host' : 'viewer';
+      // Preserve existing role (e.g. 'co-host') on rejoin/refresh, unless previously kicked (locked to viewer)
+      const existingRole = existingMember?.role as RoomRole | undefined;
+      const role: RoomRole = isHost
+        ? 'host'
+        : isPreviouslyKicked
+        ? 'viewer'
+        : existingRole || 'viewer';
+      const nowIso = new Date().toISOString();
 
-      // Upsert membership
-      const { data: memberData, error } = await supabase
-        .from('room_members')
-        .upsert(
-          {
+      let memberData:
+        | { id: string; room_id: string; user_id: string; role: string; joined_at: string; last_seen_at: string }
+        | null = null;
+      let error: { code?: string; message: string } | null = null;
+
+      if (existingMember) {
+        const res = await supabase
+          .from('room_members')
+          .update({ last_seen_at: nowIso })
+          .eq('room_id', params.roomId)
+          .eq('user_id', params.user.id)
+          .select()
+          .single();
+        memberData = res.data;
+        error = res.error;
+      } else {
+        const res = await supabase
+          .from('room_members')
+          .insert({
             room_id: params.roomId,
             user_id: params.user.id,
             role,
-            last_seen_at: new Date().toISOString(),
-          },
-          { onConflict: 'room_id,user_id' }
-        )
-        .select()
-        .single();
+            last_seen_at: nowIso,
+          })
+          .select()
+          .single();
+        memberData = res.data;
+        error = res.error;
+      }
 
       if (error || !memberData) {
         if (error?.code === 'PGRST205' || error?.message?.includes('schema cache')) {
@@ -867,6 +914,185 @@ export const roomService = {
     } catch (err) {
       console.warn('[Syncora] Failed to leave or delete room:', err);
       return false;
+    }
+  },
+
+  /**
+   * Promotes or demotes a participant's role (Host-only).
+   */
+  async updateMemberRole(
+    roomId: string,
+    targetUserId: string,
+    newRole: 'co-host' | 'viewer'
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) {
+      if (newRole === 'co-host') {
+        for (const room of devRooms.values()) {
+          if (room.id === roomId && room.kickedUserIds?.includes(targetUserId)) {
+            return {
+              success: false,
+              error:
+                'Previously kicked members are restricted to view-only access and cannot be promoted to Co-Host.',
+            };
+          }
+        }
+      }
+      const members = devMembers.get(roomId) || [];
+      const m = members.find((x) => x.userId === targetUserId);
+      if (m) m.role = newRole;
+      return { success: true };
+    }
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+      if (newRole === 'co-host') {
+        const { data: roomData } = await supabase
+          .from('rooms')
+          .select('kicked_user_ids')
+          .eq('id', roomId)
+          .maybeSingle();
+        if (roomData?.kicked_user_ids?.includes(targetUserId)) {
+          return {
+            success: false,
+            error:
+              'Previously kicked members are restricted to view-only access and cannot be promoted to Co-Host.',
+          };
+        }
+      }
+
+      const { error } = await supabase
+        .from('room_members')
+        .update({ role: newRole })
+        .eq('room_id', roomId)
+        .eq('user_id', targetUserId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to update member role.',
+      };
+    }
+  },
+
+  /**
+   * Kicks/removes a member from the room and adds them to kicked_user_ids (Host-only).
+   */
+  async kickMember(
+    roomId: string,
+    targetUserId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) {
+      const members = devMembers.get(roomId) || [];
+      devMembers.set(
+        roomId,
+        members.filter((m) => m.userId !== targetUserId)
+      );
+      for (const room of devRooms.values()) {
+        if (room.id === roomId) {
+          room.kickedUserIds = [...(room.kickedUserIds || []), targetUserId];
+        }
+      }
+      return { success: true };
+    }
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+
+      // 1. Remove member row from room_members (triggers cascade on voice call slot if present)
+      const { error: deleteError } = await supabase
+        .from('room_members')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', targetUserId);
+
+      if (deleteError) {
+        return { success: false, error: deleteError.message };
+      }
+
+      // 2. Add targetUserId to kicked_user_ids on rooms table to prevent immediate re-entry
+      const { data: roomData, error: fetchKickError } = await supabase
+        .from('rooms')
+        .select('kicked_user_ids')
+        .eq('id', roomId)
+        .maybeSingle();
+
+      if (fetchKickError) {
+        if (fetchKickError.code === 'PGRST204' || fetchKickError.message?.includes('kicked_user_ids')) {
+          return {
+            success: true,
+            error:
+              'Participant removed, but migration 007_room_permissions_and_kick.sql must be run in Supabase SQL Editor to block rejoins.',
+          };
+        }
+        return { success: false, error: fetchKickError.message };
+      }
+
+      const currentKicked = roomData?.kicked_user_ids || [];
+      if (!currentKicked.includes(targetUserId)) {
+        const { error: kickUpdateError } = await supabase
+          .from('rooms')
+          .update({
+            kicked_user_ids: [...currentKicked, targetUserId],
+          })
+          .eq('id', roomId);
+
+        if (kickUpdateError) {
+          return { success: false, error: kickUpdateError.message };
+        }
+      }
+
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to remove member.',
+      };
+    }
+  },
+
+  /**
+   * Toggles whether non-host participants can control playback (Host-only).
+   */
+  async setGuestControl(
+    roomId: string,
+    allowGuestControl: boolean
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) {
+      for (const room of devRooms.values()) {
+        if (room.id === roomId) {
+          room.allowGuestControl = allowGuestControl;
+        }
+      }
+      return { success: true };
+    }
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { error } = await supabase
+        .from('rooms')
+        .update({ allow_guest_control: allowGuestControl })
+        .eq('id', roomId);
+
+      if (error) {
+        if (error.code === 'PGRST204' || error.message?.includes('allow_guest_control')) {
+          return {
+            success: false,
+            error:
+              "Database is missing migration 007 ('allow_guest_control'). Run supabase/migrations/007_room_permissions_and_kick.sql in Supabase SQL Editor and retry.",
+          };
+        }
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to update playback permissions.',
+      };
     }
   },
 };

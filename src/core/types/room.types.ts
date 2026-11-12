@@ -23,6 +23,8 @@ export interface Room {
   lastSyncedAt: string;
   isPrivate: boolean;
   passcodeHash?: string | null;
+  allowGuestControl?: boolean;
+  kickedUserIds?: string[];
   createdAt: string;
   updatedAt: string;
 }

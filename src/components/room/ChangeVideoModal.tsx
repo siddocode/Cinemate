@@ -19,7 +19,12 @@ interface ChangeVideoModalProps {
   onSelectVideo: (url: string, type: VideoSourceType) => Promise<void>;
 }
 
-export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
+export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = (props) => {
+  if (!props.isOpen) return null;
+  return <ChangeVideoModalContent key={`${props.roomId}:${props.currentVideoUrl}`} {...props} />;
+};
+
+const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
   isOpen,
   onClose,
   roomId,
@@ -28,8 +33,17 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
 }) => {
   const { user } = useSession();
   const [activeTab, setActiveTab] = useState<VideoSourceType>('youtube');
-  const [youtubeInput, setYoutubeInput] = useState(currentVideoUrl);
-  const [directUrlInput, setDirectUrlInput] = useState('');
+  const [youtubeInput, setYoutubeInput] = useState(() =>
+    extractYouTubeId(currentVideoUrl) ? currentVideoUrl : ''
+  );
+  const [directUrlInput, setDirectUrlInput] = useState(() =>
+    currentVideoUrl &&
+    !extractYouTubeId(currentVideoUrl) &&
+    !currentVideoUrl.includes('/storage/v1/object/') &&
+    (currentVideoUrl.startsWith('http://') || currentVideoUrl.startsWith('https://'))
+      ? currentVideoUrl
+      : ''
+  );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -37,10 +51,16 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
   const [metrics, setMetrics] = useState<BandwidthMetrics | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      bandwidthService.getMetrics(user.id).then((m) => setMetrics(m));
-    }
-  }, [isOpen, user.id]);
+    let cancelled = false;
+    bandwidthService.getMetrics(user.id).then((m) => {
+      if (!cancelled) {
+        setMetrics(m);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
 
   const handleYouTubeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +145,9 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = ({
     setUploadProgress(10);
 
     try {
+      // Remove any previous uploaded video in this room before uploading the replacement
+      await storageService.cleanupRoomVideos(roomId);
+
       const res = await storageService.uploadVideo(
         selectedFile,
         roomId,

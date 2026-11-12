@@ -227,11 +227,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           })
         )}
 
-        {/* Partner Typing Indicator */}
+        {/* Typing Indicator */}
         {partnerTyping && (
           <div className="flex items-center text-[11px] text-[#CDBF9F] py-0.5">
             <span className="inline-flex gap-2 items-center bg-[#0E281F] border border-[#E8DDC5]/14 px-2.5 py-1 rounded-full">
-              <span>{partnerTyping || partnerName || 'Partner'} is typing</span>
+              <span>{partnerTyping || partnerName || 'Someone'} is typing</span>
               <span className="flex gap-1">
                 <span className="w-1 h-1 rounded-full bg-[#9670FF] animate-pulse" />
                 <span className="w-1 h-1 rounded-full bg-[#9670FF] animate-pulse delay-100" />

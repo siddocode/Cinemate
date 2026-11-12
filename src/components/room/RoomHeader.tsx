@@ -16,6 +16,7 @@ import {
   PhoneOff,
   Headphones,
   Loader2,
+  Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -43,10 +44,14 @@ export interface RoomHeaderVoiceProps {
 interface RoomHeaderProps {
   room: Room;
   isHost: boolean;
+  isCoHost?: boolean;
+  canControl?: boolean;
   duoStatus: DuoStatus;
   presenceList?: ParticipantPresence[];
   hostGraceSecondsLeft: number | null;
   onChangeVideoClick: () => void;
+  onOpenParticipants?: () => void;
+  onCloseRoom?: () => Promise<void>;
   isChatOpen?: boolean;
   onToggleChat?: () => void;
   voiceCall?: RoomHeaderVoiceProps;
@@ -55,10 +60,14 @@ interface RoomHeaderProps {
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
   room,
   isHost,
+  isCoHost,
+  canControl,
   duoStatus,
   presenceList,
   hostGraceSecondsLeft,
   onChangeVideoClick,
+  onOpenParticipants,
+  onCloseRoom,
   isChatOpen = true,
   onToggleChat,
   voiceCall,
@@ -93,6 +102,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       if (voiceCall?.isInCall) {
         await voiceCall.onLeaveCall();
       }
+      if (isHost && onCloseRoom) {
+        await onCloseRoom();
+      }
       router.push('/');
     } catch {
       setIsLeavingRoom(false);
@@ -122,18 +134,18 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
 
   return (
     <div className="shrink-0 flex flex-col border-b border-[#E8DDC5]/12 bg-[#0E281F]">
-      {/* Failover Alert Banner if Host Disconnected */}
+      {/* Disconnect Notice Banner if Host Disconnected */}
       {hostGraceSecondsLeft !== null && (
         <div className="bg-[#292214] border-b border-[#E9B872]/30 px-3 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[#F0C987]">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-[#E9B872] shrink-0" />
             <span>
-              <strong className="font-semibold">Host disconnected.</strong> Playback
-              paused during grace window.
+              <strong className="font-semibold">Host disconnected.</strong> Room will
+              close unless host reconnects.
             </span>
           </div>
           <span className="font-mono text-[11px] font-semibold bg-[#0E281F] border border-[#E9B872]/35 px-2.5 py-0.5 rounded-full text-[#F0C987]">
-            {hostGraceSecondsLeft}s until failover
+            {hostGraceSecondsLeft}s until room closes
           </span>
         </div>
       )}
@@ -222,9 +234,9 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               return (
                 <button
                   type="button"
-                  onClick={handleCopyLink}
+                  onClick={onOpenParticipants || handleCopyLink}
                   className="cursor-pointer transition-opacity hover:opacity-90 shrink-0"
-                  title="Click to copy invite link"
+                  title="View participants or invite friends"
                 >
                   <Badge variant="warning" dot className="text-[10px] sm:text-[11px] whitespace-nowrap">
                     <span className="sm:hidden">{copied ? 'Copied' : 'Invite'}</span>
@@ -239,34 +251,53 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             const totalOnline = 1 + others.length;
             const otherNames = others.map((p) => p.username).join(', ');
             return (
-              <Badge
-                variant="success"
-                dot
-                className="text-[10px] sm:text-[11px] max-w-[125px] sm:max-w-[220px] truncate whitespace-nowrap"
-                title={`Online (${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}): You, ${otherNames}`}
+              <button
+                type="button"
+                onClick={onOpenParticipants}
+                className="cursor-pointer transition-opacity hover:opacity-90 shrink-0 text-left"
+                title={`Online (${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}): You, ${otherNames}. Click to manage.`}
               >
-                <span className="sm:hidden">
-                  {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} · {others[0]?.username}
-                  {others.length > 1 ? ` +${others.length - 1}` : ''}
-                </span>
-                <span className="hidden sm:inline">
-                  {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} Online · {otherNames}
-                </span>
-              </Badge>
+                <Badge
+                  variant="success"
+                  dot
+                  className="text-[10px] sm:text-[11px] max-w-[125px] sm:max-w-[220px] truncate whitespace-nowrap cursor-pointer"
+                >
+                  <span className="sm:hidden">
+                    {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} · {others[0]?.username}
+                    {others.length > 1 ? ` +${others.length - 1}` : ''}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} Online · {otherNames}
+                  </span>
+                </Badge>
+              </button>
             );
           })()}
 
+          {/* Members / Permissions Trigger */}
+          {onOpenParticipants && (
+            <button
+              type="button"
+              onClick={onOpenParticipants}
+              className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/18 text-[#CDBF9F] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/35 text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              title="Room Members & Permissions"
+            >
+              <Users className="w-3.5 h-3.5 text-[#9670FF]" />
+              <span className="hidden xl:inline">Members</span>
+            </button>
+          )}
+
           {/* User Role */}
           <Badge
-            variant={isHost ? 'purple' : 'default'}
-            dot={isHost}
+            variant={isHost ? 'purple' : isCoHost ? 'success' : 'default'}
+            dot={isHost || isCoHost}
             className="text-[11px] hidden lg:inline-flex"
           >
-            {isHost ? 'Host' : 'Viewer'}
+            {isHost ? 'Host' : isCoHost ? 'Co-Host' : 'Viewer'}
           </Badge>
 
-          {/* Host Change Video Button */}
-          {isHost && (
+          {/* Change Video Button (Host, Co-Host or permitted controllers) */}
+          {(canControl ?? isHost) && (
             <Button
               variant="primary"
               size="sm"
@@ -407,8 +438,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             onClick={() => void handleLeaveRoom()}
             disabled={isLeavingRoom}
             className="h-7 w-7 sm:h-8 sm:w-8 p-0 rounded-full text-[#CDBF9F] hover:text-[#F2B8B2] hover:bg-[#3A1E1C]/60"
-            title="Leave Room"
-            aria-label="Leave screening room"
+            title={isHost ? 'Close & Leave Room' : 'Leave Room'}
+            aria-label={isHost ? 'Close and leave screening room' : 'Leave screening room'}
           >
             {isLeavingRoom ? (
               <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />

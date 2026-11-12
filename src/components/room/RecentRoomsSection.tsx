@@ -126,11 +126,11 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
   };
 
   return (
-    <section className="w-full max-w-5xl border-t border-[#E8DDC5]/12 pt-9 mt-12 text-left">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-5">
-        <div className="flex items-center gap-2.5">
+    <section className="w-full max-w-5xl border-t border-[#E8DDC5]/12 pt-5 mt-6 text-left">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
+        <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-[#E8DDC5]" />
-          <h2 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-[#F7F4EC]">
+          <h2 className="font-serif text-xl sm:text-2xl font-medium tracking-tight text-[#F7F4EC]">
             Recent Rooms &amp; Chat History
           </h2>
         </div>
@@ -142,78 +142,84 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[0, 1, 2].map((idx) => (
             <div
               key={idx}
-              className="bg-[#173D30]/80 border border-[#E8DDC5]/12 rounded-2xl p-4 space-y-3 animate-pulse"
+              className="bg-[#173D30]/80 border border-[#E8DDC5]/12 rounded-xl p-3.5 space-y-2.5 animate-pulse"
             >
               <div className="h-4 w-2/3 rounded bg-[#0E281F]" />
               <div className="h-3 w-1/2 rounded bg-[#0E281F]" />
-              <div className="h-9 w-full rounded-xl bg-[#0E281F]" />
+              <div className="h-8 w-full rounded-lg bg-[#0E281F]" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {rooms.map((room) => {
             const isHost = room.hostId === user.id;
             return (
               <article
                 key={room.id}
-                className="bg-[#173D30]/75 border border-[#E8DDC5]/16 hover:border-[#E8DDC5]/35 rounded-2xl p-4 transition-colors duration-150 flex flex-col justify-between gap-4"
+                onClick={() => handleOpenRoom(room)}
+                className="bg-[#173D30]/75 border border-[#E8DDC5]/16 hover:border-[#E8DDC5]/35 hover:bg-[#173D30]/95 rounded-xl p-3 sm:p-3.5 transition-colors duration-150 flex flex-col justify-between gap-2.5 cursor-pointer"
               >
-                <div className="space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold text-[#F7F4EC] truncate">
                         {room.title}
                       </h3>
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="text-[10px] font-mono font-semibold bg-[#E8DDC5] text-[#102B23] px-2 py-0.5 rounded-full">
-                          {room.code}
-                        </span>
-                        <Badge variant={isHost ? 'purple' : 'default'} className="text-[10px]">
-                          {isHost ? 'Host' : 'Member'}
-                        </Badge>
-                      </div>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => handleRemoveRoom(room, e)}
-                      disabled={isNavigating || deletingRoomId !== null}
-                      className="p-1.5 rounded-lg bg-[#0E281F]/80 hover:bg-[#3A1E1C] border border-[#E8DDC5]/14 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer shrink-0 disabled:opacity-45 disabled:pointer-events-none"
-                      title={isHost ? 'Delete room' : 'Leave room'}
-                      aria-label={isHost ? `Delete ${room.title}` : `Leave ${room.title}`}
-                    >
-                      {deletingRoomId === room.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[10px] font-mono font-semibold bg-[#E8DDC5] text-[#102B23] px-2 py-0.5 rounded-full">
+                        {room.code}
+                      </span>
+                      <Badge variant={isHost ? 'purple' : 'default'} className="text-[10px]">
+                        {isHost ? 'Host' : 'Member'}
+                      </Badge>
+                      <span className="font-mono text-[10px] text-[#CDBF9F]/70 ml-auto sm:ml-0">
+                        {formatRelativeDate(room.lastSyncedAt)}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-[#E8DDC5]/10">
-                    {getVideoSourceBadge(room)}
-                    <span className="font-mono text-[10px] text-[#CDBF9F]/70">
-                      {formatRelativeDate(room.lastSyncedAt)}
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleRemoveRoom(room, e)}
+                    disabled={isNavigating || deletingRoomId !== null}
+                    className="p-1.5 rounded-lg bg-[#0E281F]/80 hover:bg-[#3A1E1C] border border-[#E8DDC5]/14 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer shrink-0 disabled:opacity-45 disabled:pointer-events-none"
+                    title={isHost ? 'Delete room' : 'Leave room'}
+                    aria-label={isHost ? `Delete ${room.title}` : `Leave ${room.title}`}
+                  >
+                    {deletingRoomId === room.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
                 </div>
 
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleOpenRoom(room)}
-                  isLoading={openingRoomId === room.id}
-                  disabled={isNavigating || deletingRoomId === room.id}
-                  className="w-full text-xs justify-center"
-                  leftIcon={<Play className="w-3 h-3 fill-current" />}
-                >
-                  {openingRoomId === room.id ? 'Opening Room…' : 'Reopen Room'}
-                </Button>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E8DDC5]/10">
+                  <div className="min-w-0 truncate text-[11px]">
+                    {getVideoSourceBadge(room)}
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenRoom(room);
+                    }}
+                    isLoading={openingRoomId === room.id}
+                    disabled={isNavigating || deletingRoomId === room.id}
+                    className="h-7 px-3 text-[11px] shrink-0 rounded-lg"
+                    leftIcon={<Play className="w-3 h-3 fill-current" />}
+                  >
+                    {openingRoomId === room.id ? 'Opening…' : 'Reopen'}
+                  </Button>
+                </div>
               </article>
             );
           })}

@@ -14,8 +14,8 @@ const PILLARS = [
   },
   {
     icon: Users2,
-    title: 'Live Partner Status',
-    description: 'See if your partner is connected, buffering, or ready to watch.',
+    title: 'Live Viewer Presence',
+    description: 'See up to 4 viewers connected, sync status, and playback roles in real time.',
   },
 ];
 

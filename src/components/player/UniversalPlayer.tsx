@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Film,
   Loader2,
+  Tv,
 } from 'lucide-react';
 import { IVideoPlayerAdapter, VideoSourceType } from '@/core/types/player.types';
 import { YouTubePlayerAdapter } from '@/core/adapters/YouTubePlayerAdapter';
@@ -34,11 +35,13 @@ interface UniversalPlayerProps {
   videoType: VideoSourceType;
   roomId: string;
   isHost: boolean;
+  canControl?: boolean;
   hostName: string;
   channel: RealtimeChannel | null;
   initialPlayback?: InitialPlaybackSnapshot;
   onPersistSnapshot?: (position: number, isPlaying: boolean) => void;
   onVideoMismatch?: (videoUrl: string, videoType?: VideoSourceType) => void;
+  onChangeVideoClick?: () => void;
   className?: string;
 }
 
@@ -47,11 +50,13 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   videoType,
   roomId,
   isHost,
+  canControl,
   hostName,
   channel,
   initialPlayback,
   onPersistSnapshot,
   onVideoMismatch,
+  onChangeVideoClick,
   className,
 }) => {
   const { user } = useSession();
@@ -73,6 +78,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   const [isUnblocking, setIsUnblocking] = useState(false);
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasControl = canControl ?? isHost;
 
   // Synchronization engine integration
   const { isSynced, driftSeconds, requestSync } = useSyncEngine({
@@ -81,6 +87,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
     roomId,
     userId: user.id,
     isHost,
+    canControl: hasControl,
     videoUrl,
     videoType,
     initialPlayback,
@@ -224,7 +231,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
 
   const togglePlay = () => {
     if (!adapter) return;
-    if (!isHost) {
+    if (!hasControl) {
       if (autoplayNotice === 'blocked') {
         void handleUserUnblockPlayback();
         return;
@@ -248,7 +255,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
     const target = parseFloat(e.target.value);
     if (!adapter) return;
 
-    if (!isHost) {
+    if (!hasControl) {
       triggerViewerAlert();
       return;
     }
@@ -373,7 +380,11 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
               dot
               className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC] text-[10px] sm:text-[11px]"
             >
-              {isHost ? 'Host Authority' : `Synced · ${hostName}`}
+              {isHost
+                ? 'Host Authority'
+                : hasControl
+                ? `Shared Control · ${hostName}`
+                : `Synced · ${hostName}`}
             </Badge>
 
             <Badge
@@ -395,17 +406,32 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
             )}
           </div>
 
-          {!isHost && (
-            <button
-              type="button"
-              onClick={requestSync}
-              className="flex items-center gap-1.5 text-[11px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
-              title="Resync video with host"
-            >
-              <RotateCcw className="w-3 h-3 text-[#9670FF]" />
-              <span>Resync</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {hasControl && onChangeVideoClick && (
+              <button
+                type="button"
+                onClick={onChangeVideoClick}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
+                title="Change video source or upload"
+              >
+                <Tv className="w-3 h-3 text-[#9670FF]" />
+                <span className="hidden sm:inline">Change Video</span>
+                <span className="sm:hidden">Video</span>
+              </button>
+            )}
+
+            {!isHost && (
+              <button
+                type="button"
+                onClick={requestSync}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
+                title="Resync video with host"
+              >
+                <RotateCcw className="w-3 h-3 text-[#9670FF]" />
+                <span>Resync</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Center Play/Pause Click Handler */}
@@ -452,7 +478,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
               step={0.1}
               value={currentTime}
               onChange={handleSeek}
-              disabled={!isHost}
+              disabled={!hasControl}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
             />
           </div>

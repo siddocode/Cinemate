@@ -8,12 +8,14 @@ import {
   Users2,
   Film,
   AlertTriangle,
+  UserX,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { useSession } from '@/hooks/useSession';
 import { useCall } from '@/hooks/useCall';
 import { RoomHeader } from './RoomHeader';
 import { ChangeVideoModal } from './ChangeVideoModal';
+import { RoomParticipantsModal } from './RoomParticipantsModal';
 import { VoiceCallBar } from '@/components/call/VoiceCallBar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -25,20 +27,28 @@ interface RoomViewProps {
   roomCode: string;
   initialVideoId?: string;
   initialTitle?: string;
+  allowCreate?: boolean;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
   roomCode,
   initialVideoId,
   initialTitle,
+  allowCreate = false,
 }) => {
   const { user } = useSession();
   const {
     room,
     isHost,
+    isCoHost,
+    canControl,
     members,
     duoStatus,
     presenceList,
+    isKicked,
+    kickedMessage,
+    isRoomClosed,
+    roomClosedMessage,
     hostGraceSecondsLeft,
     isLoading,
     error,
@@ -46,10 +56,15 @@ export const RoomView: React.FC<RoomViewProps> = ({
     updateVideo,
     persistPlaybackSnapshot,
     applyRemoteVideo,
+    kickMember,
+    updateMemberRole,
+    toggleGuestControl,
+    closeRoom,
     channel,
-  } = useRoom(roomCode, initialTitle);
+  } = useRoom(roomCode, initialTitle, allowCreate);
 
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
+  const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const hasLoadedInitialVideo = useRef(false);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -59,7 +74,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     user,
     presenceList,
     members,
-    isRoomReady: Boolean(room && !isLoading && !error),
+    isRoomReady: Boolean(room && !isLoading && !error && !isKicked && !isRoomClosed),
     audioRef: voiceAudioRef,
   });
 
@@ -82,6 +97,77 @@ export const RoomView: React.FC<RoomViewProps> = ({
         <p className="text-xs font-mono uppercase tracking-[0.14em] text-[#CDBF9F]/75 mt-1.5">
           Synchronizing presence &amp; playback state
         </p>
+      </div>
+    );
+  }
+
+  // Kicked Screen
+  if (isKicked) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0E281F] p-4 text-center">
+        <Card glow tone="sand" className="max-w-md w-full p-7 text-center space-y-5">
+          <div className="w-11 h-11 rounded-xl bg-[#FDECEC] border border-[#DC2626]/25 text-[#B91C1C] flex items-center justify-center mx-auto">
+            <UserX className="w-5 h-5" />
+          </div>
+            <div>
+              <h2 className="font-serif text-2xl font-semibold text-[#102B23]">
+                Removed from Screening Room
+              </h2>
+              <p className="text-xs text-[#173D30]/75 mt-1.5 leading-relaxed">
+                {kickedMessage || 'You have been removed from this room by the host.'} If you rejoin later, your account is limited to view-only access (no Co-Host or playback controls).
+              </p>
+            </div>
+            <div className="space-y-2.5">
+              <Link href="/" className="block">
+                <Button
+                  variant="primary"
+                  size="md"
+                  className="w-full"
+                  leftIcon={<ArrowLeft className="w-4 h-4" />}
+                >
+                  Return to Lounge
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                size="md"
+                className="w-full"
+                onClick={() => window.location.reload()}
+              >
+                Rejoin (View-Only)
+              </Button>
+            </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isRoomClosed) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0E281F] p-4 text-center">
+        <Card glow tone="sand" className="max-w-md w-full p-7 text-center space-y-5">
+          <div className="w-11 h-11 rounded-xl bg-[#FDECEC] border border-[#DC2626]/25 text-[#B91C1C] flex items-center justify-center mx-auto">
+            <Tv className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-semibold text-[#102B23]">
+              Screening Room Closed
+            </h2>
+            <p className="text-xs text-[#173D30]/75 mt-1.5 leading-relaxed">
+              {roomClosedMessage || 'The host has left and closed this screening room.'}
+            </p>
+          </div>
+          <Link href="/" className="block">
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full"
+              leftIcon={<ArrowLeft className="w-4 h-4" />}
+            >
+              Return to Lounge
+            </Button>
+          </Link>
+        </Card>
       </div>
     );
   }
@@ -165,10 +251,14 @@ export const RoomView: React.FC<RoomViewProps> = ({
       <RoomHeader
         room={room}
         isHost={isHost}
+        isCoHost={isCoHost}
+        canControl={canControl}
         duoStatus={duoStatus}
         presenceList={presenceList}
         hostGraceSecondsLeft={hostGraceSecondsLeft}
         onChangeVideoClick={() => setIsChangeVideoOpen(true)}
+        onOpenParticipants={() => setIsParticipantsOpen(true)}
+        onCloseRoom={isHost ? closeRoom : undefined}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen(true)}
         voiceCall={{
@@ -216,6 +306,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 videoType={room.videoType}
                 roomId={room.id}
                 isHost={isHost}
+                canControl={canControl}
                 hostName={hostName}
                 channel={channel}
                 initialPlayback={{
@@ -225,6 +316,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 }}
                 onPersistSnapshot={persistPlaybackSnapshot}
                 onVideoMismatch={applyRemoteVideo}
+                onChangeVideoClick={() => setIsChangeVideoOpen(true)}
                 className="lg:aspect-auto lg:flex-1 lg:min-h-0"
               />
             ) : (
@@ -243,11 +335,11 @@ export const RoomView: React.FC<RoomViewProps> = ({
                     Screening Room Ready
                   </h3>
                   <p className="text-xs sm:text-sm text-[#CDBF9F] mt-1.5 sm:mt-2 max-w-sm leading-relaxed">
-                    {isHost
+                    {canControl
                       ? 'Choose a YouTube link, direct stream URL, or personal upload up to 50MB to start watching together.'
                       : 'Waiting for the host to load a video into the screening frame...'}
                   </p>
-                  {isHost && (
+                  {canControl && (
                     <Button
                       variant="primary"
                       size="sm"
@@ -314,6 +406,20 @@ export const RoomView: React.FC<RoomViewProps> = ({
         roomId={room.id}
         currentVideoUrl={room.videoUrl}
         onSelectVideo={updateVideo}
+      />
+
+      {/* Room Participants & Playback Delegation Modal */}
+      <RoomParticipantsModal
+        isOpen={isParticipantsOpen}
+        onClose={() => setIsParticipantsOpen(false)}
+        room={room}
+        currentUserId={user.id}
+        isHost={isHost}
+        members={members}
+        presenceList={presenceList}
+        onUpdateRole={updateMemberRole}
+        onKickMember={kickMember}
+        onToggleGuestControl={toggleGuestControl}
       />
     </div>
   );

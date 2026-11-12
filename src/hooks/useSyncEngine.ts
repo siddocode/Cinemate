@@ -17,6 +17,7 @@ interface UseSyncEngineProps {
   roomId: string;
   userId: string;
   isHost: boolean;
+  canControl?: boolean;
   videoUrl?: string;
   videoType?: VideoSourceType;
   initialPlayback?: InitialPlaybackSnapshot;
@@ -30,6 +31,7 @@ export function useSyncEngine({
   roomId,
   userId,
   isHost,
+  canControl,
   videoUrl,
   videoType,
   initialPlayback,
@@ -41,6 +43,7 @@ export function useSyncEngine({
   const [isSynced, setIsSynced] = useState<boolean>(true);
 
   const initialPlaybackRef = useRef(initialPlayback);
+  const canControlRef = useRef(canControl ?? isHost);
   const onPersistSnapshotRef = useRef(onPersistSnapshot);
   const onVideoMismatchRef = useRef(onVideoMismatch);
 
@@ -56,6 +59,13 @@ export function useSyncEngine({
     onVideoMismatchRef.current = onVideoMismatch;
   }, [onVideoMismatch]);
 
+  // Update canControl dynamically on existing engine without tearing down playback sync
+  useEffect(() => {
+    const resolved = canControl ?? isHost;
+    canControlRef.current = resolved;
+    syncEngineRef.current?.updateCanControl(resolved);
+  }, [canControl, isHost]);
+
   // Initialize and update SyncEngine
   useEffect(() => {
     if (!adapter || !roomId) return;
@@ -66,6 +76,7 @@ export function useSyncEngine({
       roomId,
       userId,
       isHost,
+      canControl: canControlRef.current,
       videoUrl,
       videoType,
       initialPlayback: initialPlaybackRef.current,

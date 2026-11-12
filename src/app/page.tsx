@@ -26,7 +26,7 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
   // Create room state
-  const [roomTitle, setRoomTitle] = useState('Our Watch Party');
+  const [roomTitle, setRoomTitle] = useState('');
   const [videoInput, setVideoInput] = useState('');
   const [createError, setCreateError] = useState('');
 
@@ -44,8 +44,9 @@ export default function HomePage() {
 
     const code = generateRoomCode();
     const params = new URLSearchParams();
+    params.set('create', '1');
     const trimmedTitle = roomTitle.trim();
-    if (trimmedTitle && trimmedTitle !== 'Our Watch Party') {
+    if (trimmedTitle) {
       params.set('title', trimmedTitle);
     }
 
@@ -89,10 +90,10 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between max-w-6xl w-full mx-auto px-4 sm:px-6 pt-10 pb-14 sm:pt-14 sm:pb-16">
+    <div className="flex-1 flex flex-col justify-between max-w-6xl w-full mx-auto px-4 sm:px-6 pt-4 pb-8 sm:pt-5 sm:pb-10">
       <div className="flex flex-col items-center text-center">
         {/* Centered Editorial Hero Heading */}
-        <h1 className="font-serif text-4xl sm:text-5xl lg:text-[3.75rem] font-bold tracking-[-0.02em] leading-[1.08] text-[#F7F4EC] max-w-3xl">
+        <h1 className="font-serif text-3xl sm:text-4xl lg:text-[2.95rem] font-bold tracking-[-0.02em] leading-[1.06] text-[#F7F4EC] max-w-3xl">
           Watch YouTube together.
           <br />
           <span className="font-normal">
@@ -101,16 +102,16 @@ export default function HomePage() {
           </span>
         </h1>
 
-        <p className="mt-4 text-sm sm:text-base text-[#CDBF9F] max-w-xl leading-relaxed">
+        <p className="mt-2 text-xs sm:text-sm text-[#CDBF9F] max-w-xl leading-relaxed">
           Zero lag. Host-synchronized playback. Private watch rooms for up to 4
           friends—enjoy YouTube, direct streams, and personal uploads together.
         </p>
 
         {/* Centered Warm Sand Beige Room Launcher Card */}
-        <div className="w-full max-w-lg mt-9 text-left">
-          <Card glow tone="sand" className="p-5 sm:p-6">
+        <div className="w-full max-w-lg mt-4 sm:mt-5 text-left">
+          <Card glow tone="sand" className="p-4 sm:p-5">
             {/* Pill Tab Switcher */}
-            <div className="grid grid-cols-2 p-1 bg-[#DFD2B4] rounded-full mb-5 text-xs">
+            <div className="grid grid-cols-2 p-1 bg-[#DFD2B4] rounded-full mb-3.5 text-xs">
               <button
                 type="button"
                 onClick={() => setActiveTab('create')}
@@ -141,7 +142,7 @@ export default function HomePage() {
 
             {/* Create Room Form */}
             {activeTab === 'create' && (
-              <form onSubmit={handleCreateRoom} className="space-y-4">
+              <form onSubmit={handleCreateRoom} className="space-y-3">
                 <Input
                   label="Room Name"
                   placeholder="e.g. Movie Night, YouTube Chill"
@@ -177,7 +178,7 @@ export default function HomePage() {
 
             {/* Join Room Form */}
             {activeTab === 'join' && (
-              <form onSubmit={handleJoinRoom} className="space-y-4">
+              <form onSubmit={handleJoinRoom} className="space-y-3">
                 <Input
                   label="Room Code or Invitation Link"
                   placeholder="e.g. SYNC-8492 or paste invite URL"
@@ -204,7 +205,7 @@ export default function HomePage() {
             )}
 
             {/* Card Footer Status */}
-            <div className="pt-3.5 mt-5 border-t border-[#173D30]/12">
+            <div className="pt-2.5 mt-3.5 border-t border-[#173D30]/12">
               {isAuthenticated ? (
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="text-[#173D30]/80 truncate">

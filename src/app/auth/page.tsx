@@ -23,10 +23,10 @@ function AuthShell({ resolvedInitialTab, initialError, redirectTarget }: AuthShe
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(resolvedInitialTab);
 
   return (
-    <div className="flex-1 flex flex-col justify-between max-w-6xl w-full mx-auto px-4 sm:px-6 pt-8 pb-12 sm:pt-12 sm:pb-16">
+    <div className="flex-1 flex flex-col justify-between max-w-6xl w-full mx-auto px-4 sm:px-6 pt-5 pb-10 sm:pt-6 sm:pb-12">
       <div className="flex flex-col items-center text-center">
         {/* Eyebrow Indicator */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/16 text-[10px] font-mono uppercase tracking-[0.18em] text-[#E8DDC5] mb-5">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/16 text-[10px] font-mono uppercase tracking-[0.18em] text-[#E8DDC5] mb-3.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[#9670FF]" />
           <span>Private Screening Access</span>
         </div>
@@ -43,15 +43,15 @@ function AuthShell({ resolvedInitialTab, initialError, redirectTarget }: AuthShe
           </span>
         </h1>
 
-        <p className="mt-4 text-sm sm:text-base text-[#CDBF9F] max-w-lg leading-relaxed">
+        <p className="mt-2.5 text-sm sm:text-base text-[#CDBF9F] max-w-lg leading-relaxed">
           {activeTab === 'signin'
             ? 'Sign in to access your private screening rooms, favorites, and synchronized sessions.'
-            : 'Create an account to host persistent watch parties with your partner.'}
+            : 'Create an account to host persistent watch parties for up to 4 friends.'}
         </p>
 
         {/* Warm Sand Beige Auth Card */}
-        <div className="w-full max-w-[440px] mt-8 text-left">
-          <Card glow tone="sand" className="p-5 sm:p-6">
+        <div className="w-full max-w-[440px] mt-5 sm:mt-6 text-left">
+          <Card glow tone="sand" className="p-4 sm:p-5">
             <AuthFormContent
               initialTab={resolvedInitialTab}
               initialError={initialError}

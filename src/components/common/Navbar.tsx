@@ -189,7 +189,7 @@ export const Navbar: React.FC = () => {
         onClose={() => setIsNameModalOpen(false)}
         preventClose={isSavingName}
         title="Display Name"
-        description="This name appears to your watch partner in room presence and live chat."
+        description="This name appears to other viewers in room presence and live chat."
       >
         <form onSubmit={handleSaveName} className="space-y-4">
           <Input

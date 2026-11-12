@@ -111,6 +111,13 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
                 return;
               }
               this.isReady = true;
+              if (!this.wantPlaying) {
+                try {
+                  playerInstance.pauseVideo();
+                } catch {
+                  // ignore
+                }
+              }
               this.startStateTracking();
               this.emit('READY', this.getPlaybackState());
               resolve();
@@ -323,7 +330,11 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
     const cleanId = extractYouTubeId(videoId) || videoId;
     this.currentVideoId = cleanId;
     try {
-      this.player.loadVideoById(cleanId, 0);
+      if (this.wantPlaying) {
+        this.player.loadVideoById(cleanId, 0);
+      } else {
+        this.player.cueVideoById(cleanId, 0);
+      }
     } catch (err) {
       console.warn('[Syncora] loadVideo error:', err);
     }

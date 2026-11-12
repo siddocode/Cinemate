@@ -52,7 +52,7 @@ function getStatusMeta(
     case 'joining':
       return { label: 'Accessing mic…', variant: 'purple' };
     case 'waiting':
-      return { label: 'Waiting for partner (1/2)', variant: 'warning' };
+      return { label: 'Waiting for friend (1/2)', variant: 'warning' };
     case 'connecting':
       return { label: 'Connecting audio…', variant: 'purple' };
     case 'reconnecting':
