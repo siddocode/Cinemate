@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect x="1.5" y="1.5" width="29" height="29" rx="8" fill="#0E281F" />
+  <rect
+    x="1.5"
+    y="1.5"
+    width="29"
+    height="29"
+    rx="8"
+    fill="#9670FF"
+    fill-opacity="0.16"
+    stroke="#9670FF"
+    stroke-opacity="0.8"
+    stroke-width="1.5"
+  />
+  <path
+    d="M11.5 9.2L22.5 16L11.5 22.8V9.2Z"
+    stroke="#F7F4EC"
+    stroke-width="2.2"
+    stroke-linejoin="round"
+  />
+</svg>
+

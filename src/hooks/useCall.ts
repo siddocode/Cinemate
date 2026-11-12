@@ -30,6 +30,7 @@ import { UserIdentity } from '@/core/types/session.types';
 
 interface UseCallOptions {
   roomId?: string;
+  hostId?: string;
   user: UserIdentity;
   presenceList: ParticipantPresence[];
   members: RoomMember[];
@@ -101,6 +102,7 @@ function stopMediaStream(stream: MediaStream | null): void {
 
 export function useCall({
   roomId,
+  hostId,
   user,
   presenceList,
   members,
@@ -110,22 +112,27 @@ export function useCall({
   const [isJoining, setIsJoining] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [isInCall, setIsInCall] = useState(false);
-  const [peerStatus, setPeerStatus] = useState<PeerConnectionStatus>('connecting');
   const [isMuted, setIsMuted] = useState(false);
   const [isLocalSpeaking, setIsLocalSpeaking] = useState(false);
-  const [isPeerSpeaking, setIsPeerSpeaking] = useState(false);
-  const [isPeerMuted, setIsPeerMuted] = useState(false);
-  const [isAudioBlocked, setIsAudioBlocked] = useState(false);
+  const [peerStatuses, setPeerStatuses] = useState<Record<string, PeerConnectionStatus>>({});
+  const [peerMutedMap, setPeerMutedMap] = useState<Record<string, boolean>>({});
+  const [peerSpeakingMap, setPeerSpeakingMap] = useState<Record<string, boolean>>({});
+  const [peerConnectionModes, setPeerConnectionModes] = useState<
+    Record<string, CallConnectionMode>
+  >({});
+  const [blockedAudioPeers, setBlockedAudioPeers] = useState<Record<string, boolean>>({});
   const [iceMode, setIceMode] = useState<'turn' | 'stun-only' | null>(null);
-  const [connectionMode, setConnectionMode] = useState<CallConnectionMode>('unknown');
   const [error, setError] = useState<CallError | null>(null);
+  const [callEndedNotice, setCallEndedNotice] = useState<string | null>(null);
   const [callSlots, setCallSlots] = useState<CallParticipantSlot[]>([]);
   const [profileCache, setProfileCache] = useState<Record<string, ProfileMeta>>({});
 
   const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const remoteAudioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const signalingRef = useRef<CallSignaling | null>(null);
-  const peerManagerRef = useRef<PeerConnectionManager | null>(null);
+  const peerManagersRef = useRef<Map<string, PeerConnectionManager>>(new Map());
+  const peerSessionsRef = useRef<Map<string, string>>(new Map());
   const audioMonitorRef = useRef<AudioLevelMonitor | null>(null);
 
   const isInCallRef = useRef(false);
@@ -134,11 +141,8 @@ export function useCall({
   const isMutedRef = useRef(false);
   const iceConfigRef = useRef<CallIceConfig | null>(null);
   const selfSessionIdRef = useRef<string | null>(null);
-  const activePeerIdRef = useRef<string | null>(null);
-  const activePeerSessionRef = useRef<string | null>(null);
-  const peerSubscribedRef = useRef(false);
-  const peerHelloReceivedRef = useRef(false);
-  const echoedHelloForSessionRef = useRef<string | null>(null);
+  const peerHelloReceivedRef = useRef<Set<string>>(new Set());
+  const echoedHelloRef = useRef<Map<string, string>>(new Map());
   const handleMicTrackEndedRef = useRef<() => Promise<void>>(async () => {});
   const scheduleTurnRefreshRef = useRef<(targetRoomId: string, config: CallIceConfig) => void>(
     () => {}
@@ -146,15 +150,17 @@ export function useCall({
 
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const offerFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offerFallbackTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const slotPruneTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const roomIdRef = useRef(roomId);
+  const hostIdRef = useRef(hostId);
   const userIdRef = useRef(user.id);
   useEffect(() => {
     roomIdRef.current = roomId;
+    hostIdRef.current = hostId;
     userIdRef.current = user.id;
-  }, [roomId, user.id]);
+  }, [roomId, hostId, user.id]);
 
   const clearTimers = useCallback(() => {
     if (heartbeatTimerRef.current) {
@@ -165,85 +171,214 @@ export function useCall({
       clearTimeout(turnRefreshTimerRef.current);
       turnRefreshTimerRef.current = null;
     }
-    if (offerFallbackTimerRef.current) {
-      clearTimeout(offerFallbackTimerRef.current);
-      offerFallbackTimerRef.current = null;
+    for (const timer of offerFallbackTimersRef.current.values()) {
+      clearTimeout(timer);
     }
+    offerFallbackTimersRef.current.clear();
   }, []);
 
-  const detachPeerConnection = useCallback(() => {
-    if (offerFallbackTimerRef.current) {
-      clearTimeout(offerFallbackTimerRef.current);
-      offerFallbackTimerRef.current = null;
-    }
-    if (peerManagerRef.current) {
-      peerManagerRef.current.destroy();
-      peerManagerRef.current = null;
-    }
-    if (activePeerIdRef.current) {
-      audioMonitorRef.current?.untrackStream(activePeerIdRef.current);
-    }
-    remoteStreamRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.srcObject = null;
-    }
-    activePeerIdRef.current = null;
-    activePeerSessionRef.current = null;
-    peerSubscribedRef.current = false;
-    peerHelloReceivedRef.current = false;
-    echoedHelloForSessionRef.current = null;
-    setIsPeerSpeaking(false);
-    setIsPeerMuted(false);
-    setIsAudioBlocked(false);
-    setConnectionMode('unknown');
-    setPeerStatus('connecting');
-  }, [audioRef]);
+  const releasePeerAudioElement = useCallback(
+    (peerId: string) => {
+      const audioEl = remoteAudioElsRef.current.get(peerId);
+      if (!audioEl) return;
+      remoteAudioElsRef.current.delete(peerId);
+      audioEl.srcObject = null;
+      if (audioEl !== audioRef.current && audioEl.parentNode) {
+        audioEl.parentNode.removeChild(audioEl);
+      }
+    },
+    [audioRef]
+  );
 
-  const attachRemoteAudio = useCallback((stream: MediaStream) => {
-    remoteStreamRef.current = stream;
-    const audioEl = audioRef.current;
-    if (!audioEl) return;
+  const detachPeerConnection = useCallback(
+    (peerId?: string) => {
+      if (!peerId) {
+        for (const id of Array.from(offerFallbackTimersRef.current.keys())) {
+          const timer = offerFallbackTimersRef.current.get(id);
+          if (timer) clearTimeout(timer);
+        }
+        offerFallbackTimersRef.current.clear();
 
-    audioEl.srcObject = stream;
-    const playPromise = audioEl.play();
-    if (playPromise && typeof playPromise.then === 'function') {
-      playPromise
-        .then(() => {
-          setIsAudioBlocked(false);
-        })
-        .catch(() => {
-          setIsAudioBlocked(true);
-        });
-    }
-  }, [audioRef]);
+        for (const [id, mgr] of peerManagersRef.current.entries()) {
+          mgr.destroy();
+          audioMonitorRef.current?.untrackStream(id);
+        }
+        peerManagersRef.current.clear();
+        peerSessionsRef.current.clear();
+        peerHelloReceivedRef.current.clear();
+        echoedHelloRef.current.clear();
+        remoteStreamsRef.current.clear();
+
+        for (const id of Array.from(remoteAudioElsRef.current.keys())) {
+          releasePeerAudioElement(id);
+        }
+        if (audioRef.current) {
+          audioRef.current.srcObject = null;
+        }
+
+        setPeerStatuses({});
+        setPeerMutedMap({});
+        setPeerSpeakingMap({});
+        setPeerConnectionModes({});
+        setBlockedAudioPeers({});
+        return;
+      }
+
+      const timer = offerFallbackTimersRef.current.get(peerId);
+      if (timer) {
+        clearTimeout(timer);
+        offerFallbackTimersRef.current.delete(peerId);
+      }
+
+      const mgr = peerManagersRef.current.get(peerId);
+      if (mgr) {
+        mgr.destroy();
+        peerManagersRef.current.delete(peerId);
+      }
+
+      audioMonitorRef.current?.untrackStream(peerId);
+      remoteStreamsRef.current.delete(peerId);
+      releasePeerAudioElement(peerId);
+      peerSessionsRef.current.delete(peerId);
+      peerHelloReceivedRef.current.delete(peerId);
+      echoedHelloRef.current.delete(peerId);
+
+      setPeerStatuses((prev) => {
+        if (!(peerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
+      setPeerMutedMap((prev) => {
+        if (!(peerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
+      setPeerSpeakingMap((prev) => {
+        if (!(peerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
+      setPeerConnectionModes((prev) => {
+        if (!(peerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
+      setBlockedAudioPeers((prev) => {
+        if (!(peerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
+    },
+    [audioRef, releasePeerAudioElement]
+  );
+
+  const getOrCreatePeerAudioElement = useCallback(
+    (peerId: string): HTMLAudioElement | null => {
+      const existing = remoteAudioElsRef.current.get(peerId);
+      if (existing) return existing;
+
+      const primary = audioRef.current;
+      const primaryInUse = primary
+        ? Array.from(remoteAudioElsRef.current.values()).includes(primary)
+        : false;
+
+      if (primary && !primaryInUse) {
+        remoteAudioElsRef.current.set(peerId, primary);
+        return primary;
+      }
+
+      if (typeof document === 'undefined') return null;
+      const el = document.createElement('audio');
+      el.autoplay = true;
+      el.setAttribute('playsinline', '');
+      el.className = 'hidden';
+      el.setAttribute('aria-hidden', 'true');
+      (primary?.parentElement ?? document.body).appendChild(el);
+      remoteAudioElsRef.current.set(peerId, el);
+      return el;
+    },
+    [audioRef]
+  );
+
+  const attachRemoteAudio = useCallback(
+    (peerId: string, stream: MediaStream) => {
+      remoteStreamsRef.current.set(peerId, stream);
+      const audioEl = getOrCreatePeerAudioElement(peerId);
+      if (!audioEl) return;
+
+      audioEl.srcObject = stream;
+      const playPromise = audioEl.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise
+          .then(() => {
+            setBlockedAudioPeers((prev) => {
+              if (!prev[peerId]) return prev;
+              const next = { ...prev };
+              delete next[peerId];
+              return next;
+            });
+          })
+          .catch(() => {
+            setBlockedAudioPeers((prev) => ({ ...prev, [peerId]: true }));
+          });
+      }
+    },
+    [getOrCreatePeerAudioElement]
+  );
 
   const unlockRemoteAudio = useCallback(async () => {
     await audioMonitorRef.current?.resume();
-    const audioEl = audioRef.current;
-    if (!audioEl) return;
-    if (remoteStreamRef.current && audioEl.srcObject !== remoteStreamRef.current) {
-      audioEl.srcObject = remoteStreamRef.current;
-    }
-    try {
-      await audioEl.play();
-      setIsAudioBlocked(false);
-    } catch {
-      setIsAudioBlocked(true);
-    }
-  }, [audioRef]);
+
+    const nextBlocked: Record<string, boolean> = {};
+    const entries = Array.from(remoteStreamsRef.current.entries());
+
+    await Promise.all(
+      entries.map(async ([peerId, stream]) => {
+        const audioEl = getOrCreatePeerAudioElement(peerId);
+        if (!audioEl) return;
+        if (audioEl.srcObject !== stream) {
+          audioEl.srcObject = stream;
+        }
+        try {
+          await audioEl.play();
+        } catch {
+          nextBlocked[peerId] = true;
+        }
+      })
+    );
+
+    setBlockedAudioPeers(nextBlocked);
+  }, [getOrCreatePeerAudioElement]);
 
   const cleanupCall = useCallback(
-    async (options: { notifyServer?: boolean; nextError?: CallError | null } = {}) => {
+    async (
+      options: {
+        notifyServer?: boolean;
+        nextError?: CallError | null;
+        endedByHost?: boolean;
+      } = {}
+    ) => {
       const targetRoomId = roomIdRef.current;
-      const peerId = activePeerIdRef.current;
       const wasInCall = isInCallRef.current;
+      const isHostCaller = Boolean(
+        hostIdRef.current && userIdRef.current && userIdRef.current === hostIdRef.current
+      );
+      const activePeerIds = Array.from(peerManagersRef.current.keys());
 
       isInCallRef.current = false;
       isJoiningRef.current = false;
       clearTimers();
 
-      if (peerId && signalingRef.current) {
-        await signalingRef.current.sendBye(peerId, 'left');
+      if (signalingRef.current && activePeerIds.length > 0) {
+        const byeReason = isHostCaller ? 'host-ended' : 'left';
+        await Promise.all(
+          activePeerIds.map((peerId) => signalingRef.current!.sendBye(peerId, byeReason))
+        );
       }
 
       detachPeerConnection();
@@ -269,6 +404,9 @@ export function useCall({
       setIsMuted(false);
       setIsLocalSpeaking(false);
       setIceMode(null);
+      if (options.endedByHost && !isHostCaller) {
+        setCallEndedNotice('Host ended the voice call.');
+      }
       if (options.nextError !== undefined) {
         setError(options.nextError);
       }
@@ -318,7 +456,11 @@ export function useCall({
 
       const prevStream = localStreamRef.current;
       localStreamRef.current = replacement;
-      await peerManagerRef.current?.replaceAudioTrack(newTrack);
+      await Promise.all(
+        Array.from(peerManagersRef.current.values()).map((mgr) =>
+          mgr.replaceAudioTrack(newTrack)
+        )
+      );
       audioMonitorRef.current?.trackStream('local', replacement, isMutedRef.current);
       stopMediaStream(prevStream);
     } catch (err) {
@@ -370,6 +512,20 @@ export function useCall({
             return;
           }
           setCallSlots((prev) => prev.filter((s) => s.userId !== removedUserId));
+          const isHostRemoved = Boolean(
+            hostIdRef.current && removedUserId === hostIdRef.current
+          );
+          if (isHostRemoved && removedUserId !== user.id) {
+            setCallSlots([]);
+            if (isInCallRef.current) {
+              void cleanupCall({
+                notifyServer: false,
+                nextError: null,
+                endedByHost: true,
+              });
+            }
+            return;
+          }
           if (removedUserId === user.id && isInCallRef.current) {
             void cleanupCall({
               notifyServer: false,
@@ -384,6 +540,7 @@ export function useCall({
 
         if (!change.newRow) return;
         const incoming = mapRowToSlot(change.newRow);
+        setCallEndedNotice(null);
         setCallSlots((prev) => {
           const filtered = prev.filter((s) => s.userId !== incoming.userId);
           return [...filtered, incoming].sort((a, b) =>
@@ -493,7 +650,9 @@ export function useCall({
             if (!isInCallRef.current) return;
             iceConfigRef.current = fresh;
             setIceMode(fresh.mode);
-            peerManagerRef.current?.updateIceServers(fresh.iceServers);
+            for (const mgr of peerManagersRef.current.values()) {
+              mgr.updateIceServers(fresh.iceServers);
+            }
             scheduleTurnRefreshRef.current(targetRoomId, fresh);
           })
           .catch(() => {
@@ -508,98 +667,115 @@ export function useCall({
     scheduleTurnRefreshRef.current = scheduleTurnRefresh;
   }, [scheduleTurnRefresh]);
 
-  // Connect or update the 1:1 PeerConnection whenever partner slot changes while we are in the call
+  // Reconcile 4-way mesh PeerConnections whenever active call slots change
   useEffect(() => {
     if (!isInCall || !roomId || !user.id) return;
-
-    const partnerSlot =
-      callSlots.find((s) => s.userId !== user.id && isSlotFresh(s)) ?? null;
-
-    if (!partnerSlot) {
-      if (activePeerIdRef.current) {
-        detachPeerConnection();
-        void signalingRef.current?.setPeer(null);
-      }
-      return;
-    }
-
-    const isAlreadyBoundToPartner =
-      activePeerIdRef.current === partnerSlot.userId &&
-      activePeerSessionRef.current === partnerSlot.callSessionId &&
-      Boolean(peerManagerRef.current);
-
-    if (isAlreadyBoundToPartner) {
-      return;
-    }
 
     const iceConfig = iceConfigRef.current;
     const signaling = signalingRef.current;
     const localStream = localStreamRef.current;
     if (!iceConfig || !signaling || !localStream) return;
 
-    detachPeerConnection();
-    activePeerIdRef.current = partnerSlot.userId;
-    activePeerSessionRef.current = partnerSlot.callSessionId;
+    const remoteSlots = callSlots.filter(
+      (s) => s.userId !== user.id && isSlotFresh(s)
+    );
+    const desiredMap = new Map(remoteSlots.map((s) => [s.userId, s]));
 
-    const peerId = partnerSlot.userId;
-    const peerSessionId = partnerSlot.callSessionId;
-    const isImpolite = user.id > peerId;
+    // Tear down peers who left or rotated callSessionId
+    for (const [existingPeerId, existingSessionId] of Array.from(
+      peerSessionsRef.current.entries()
+    )) {
+      const nextSlot = desiredMap.get(existingPeerId);
+      if (!nextSlot || nextSlot.callSessionId !== existingSessionId) {
+        detachPeerConnection(existingPeerId);
+      }
+    }
 
-    const pcMgr = new PeerConnectionManager({
-      selfUserId: user.id,
-      peerUserId: peerId,
-      iceServers: iceConfig.iceServers,
-      isStunOnlyFallback: iceConfig.mode === 'stun-only',
-      deferInitialOffer: true,
-      callbacks: {
-        onOffer: (sdp) => signaling.sendOffer(peerId, sdp),
-        onAnswer: (sdp) => signaling.sendAnswer(peerId, sdp),
-        onIceCandidate: (candidate) => signaling.sendIceCandidate(peerId, candidate),
-        onRemoteStream: (remoteStream) => {
-          audioMonitorRef.current?.trackStream(peerId, remoteStream, false);
-          attachRemoteAudio(remoteStream);
+    void signaling.syncPeers(
+      remoteSlots.map((s) => ({
+        userId: s.userId,
+        callSessionId: s.callSessionId,
+      }))
+    );
+
+    // Create PeerConnections for newly joined peers
+    for (const slot of remoteSlots) {
+      const peerId = slot.userId;
+      const peerSessionId = slot.callSessionId;
+      const isAlreadyBound =
+        peerSessionsRef.current.get(peerId) === peerSessionId &&
+        peerManagersRef.current.has(peerId);
+
+      if (isAlreadyBound) continue;
+
+      peerSessionsRef.current.set(peerId, peerSessionId);
+      const isImpolite = user.id > peerId;
+
+      setPeerStatuses((prev) => ({ ...prev, [peerId]: 'connecting' }));
+
+      const pcMgr = new PeerConnectionManager({
+        selfUserId: user.id,
+        peerUserId: peerId,
+        iceServers: iceConfig.iceServers,
+        isStunOnlyFallback: iceConfig.mode === 'stun-only',
+        deferInitialOffer: true,
+        callbacks: {
+          onOffer: (sdp) => signaling.sendOffer(peerId, sdp),
+          onAnswer: (sdp) => signaling.sendAnswer(peerId, sdp),
+          onIceCandidate: (candidate) => signaling.sendIceCandidate(peerId, candidate),
+          onRemoteStream: (remoteStream) => {
+            audioMonitorRef.current?.trackStream(peerId, remoteStream, false);
+            attachRemoteAudio(peerId, remoteStream);
+          },
+          onStatusChange: (pcStatus: PeerConnectionStatus) => {
+            if (!isInCallRef.current || peerManagersRef.current.get(peerId) !== pcMgr) {
+              return;
+            }
+            if (pcStatus === 'connected') {
+              const fallbackTimer = offerFallbackTimersRef.current.get(peerId);
+              if (fallbackTimer) {
+                clearTimeout(fallbackTimer);
+                offerFallbackTimersRef.current.delete(peerId);
+              }
+            }
+            setPeerStatuses((prev) =>
+              prev[peerId] === pcStatus ? prev : { ...prev, [peerId]: pcStatus }
+            );
+          },
+          onConnectionModeChange: (mode) => {
+            if (isInCallRef.current && peerManagersRef.current.get(peerId) === pcMgr) {
+              setPeerConnectionModes((prev) =>
+                prev[peerId] === mode ? prev : { ...prev, [peerId]: mode }
+              );
+            }
+          },
+          onError: (callErr) => {
+            if (!isInCallRef.current) return;
+            setError(callErr);
+            if (callErr.code === 'CONNECTION_FAILED') {
+              setPeerStatuses((prev) => ({ ...prev, [peerId]: 'failed' }));
+            }
+          },
         },
-        onStatusChange: (pcStatus: PeerConnectionStatus) => {
-          if (!isInCallRef.current || activePeerIdRef.current !== peerId) return;
-          if (pcStatus === 'connected' && offerFallbackTimerRef.current) {
-            clearTimeout(offerFallbackTimerRef.current);
-            offerFallbackTimerRef.current = null;
+      });
+
+      peerManagersRef.current.set(peerId, pcMgr);
+      pcMgr.setLocalStream(localStream);
+
+      // Fallback: if impolite peer hasn't heard partner's hello within 1.5s, initiate offer anyway
+      if (isImpolite) {
+        const timer = setTimeout(() => {
+          offerFallbackTimersRef.current.delete(peerId);
+          if (
+            isInCallRef.current &&
+            peerManagersRef.current.get(peerId) === pcMgr &&
+            !peerHelloReceivedRef.current.has(peerId)
+          ) {
+            void pcMgr.createAndSendOffer();
           }
-          setPeerStatus(pcStatus);
-        },
-        onConnectionModeChange: (mode) => {
-          if (isInCallRef.current && activePeerIdRef.current === peerId) {
-            setConnectionMode(mode);
-          }
-        },
-        onError: (callErr) => {
-          if (!isInCallRef.current) return;
-          setError(callErr);
-          if (callErr.code === 'CONNECTION_FAILED') {
-            setPeerStatus('failed');
-          }
-        },
-      },
-    });
-
-    peerManagerRef.current = pcMgr;
-    pcMgr.setLocalStream(localStream);
-
-    void signaling.setPeer(peerId, peerSessionId);
-
-    // Fallback: if impolite peer hasn't heard partner's hello within 1.5s, initiate offer anyway
-    if (isImpolite) {
-      offerFallbackTimerRef.current = setTimeout(() => {
-        offerFallbackTimerRef.current = null;
-        if (
-          isInCallRef.current &&
-          activePeerIdRef.current === peerId &&
-          !peerHelloReceivedRef.current &&
-          peerManagerRef.current === pcMgr
-        ) {
-          void pcMgr.createAndSendOffer();
-        }
-      }, 1500);
+        }, 1500);
+        offerFallbackTimersRef.current.set(peerId, timer);
+      }
     }
   }, [isInCall, callSlots, roomId, user.id, detachPeerConnection, attachRemoteAudio]);
 
@@ -628,7 +804,9 @@ export function useCall({
           });
       }
 
-      peerManagerRef.current?.triggerIceRestart();
+      for (const mgr of peerManagersRef.current.values()) {
+        mgr.triggerIceRestart();
+      }
     };
 
     const handlePageHide = () => {
@@ -676,27 +854,44 @@ export function useCall({
 
   const handleIncomingSignal = useCallback(
     (signal: CallSignalPayload, fromUserId: string) => {
-      if (!isInCallRef.current || activePeerIdRef.current !== fromUserId) {
+      if (!isInCallRef.current || !peerSessionsRef.current.has(fromUserId)) {
         return;
       }
 
       if (signal.event === 'bye') {
-        detachPeerConnection();
+        const hostEndedCall =
+          signal.reason === 'host-ended' ||
+          Boolean(hostIdRef.current && fromUserId === hostIdRef.current);
+        if (hostEndedCall) {
+          setCallSlots([]);
+          void cleanupCall({
+            notifyServer: false,
+            nextError: null,
+            endedByHost: true,
+          });
+          return;
+        }
+        detachPeerConnection(fromUserId);
+        signalingRef.current?.removePeer(fromUserId);
         return;
       }
 
       if (signal.event === 'media-state') {
-        const firstHello = !peerHelloReceivedRef.current;
-        peerHelloReceivedRef.current = true;
-        setIsPeerMuted(signal.mediaState.isMuted);
+        const firstHello = !peerHelloReceivedRef.current.has(fromUserId);
+        peerHelloReceivedRef.current.add(fromUserId);
+        setPeerMutedMap((prev) =>
+          prev[fromUserId] === signal.mediaState.isMuted
+            ? prev
+            : { ...prev, [fromUserId]: signal.mediaState.isMuted }
+        );
         audioMonitorRef.current?.setMuted(fromUserId, signal.mediaState.isMuted);
 
         const signaling = signalingRef.current;
-        const pcMgr = peerManagerRef.current;
+        const pcMgr = peerManagersRef.current.get(fromUserId);
 
-        // Echo our mute state once so the remote peer knows our inbox is subscribed
-        if (firstHello && echoedHelloForSessionRef.current !== signal.callSessionId) {
-          echoedHelloForSessionRef.current = signal.callSessionId;
+        // Echo our mute state once so this remote peer knows our inbox is subscribed
+        if (firstHello && echoedHelloRef.current.get(fromUserId) !== signal.callSessionId) {
+          echoedHelloRef.current.set(fromUserId, signal.callSessionId);
           signaling?.sendMediaState(fromUserId, { isMuted: isMutedRef.current });
         }
 
@@ -712,9 +907,9 @@ export function useCall({
         return;
       }
 
-      void peerManagerRef.current?.handleSignal(signal);
+      void peerManagersRef.current.get(fromUserId)?.handleSignal(signal);
     },
-    [detachPeerConnection]
+    [cleanupCall, detachPeerConnection]
   );
 
   const joinCall = useCallback(async () => {
@@ -751,6 +946,7 @@ export function useCall({
     isJoiningRef.current = true;
     setIsJoining(true);
     setError(null);
+    setCallEndedNotice(null);
 
     let micStream: MediaStream | null = null;
     let joinedSlot = false;
@@ -781,7 +977,7 @@ export function useCall({
         return;
       }
 
-      // 2. Atomically reserve 1 of the 2 server-side voice call slots
+      // 2. Atomically reserve 1 of the server-side voice call slots (up to 4-way mesh)
       const { data: slotRows, error: rpcError } = await supabase.rpc('join_room_call', {
         p_room_id: roomId,
       });
@@ -796,7 +992,10 @@ export function useCall({
           : 'SIGNALING_ERROR';
         setError({
           code,
-          message: code === 'CALL_FULL' ? 'Voice call is full (2/2 participants active).' : msg,
+          message:
+            code === 'CALL_FULL'
+              ? `Voice call is full (${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} participants active).`
+              : msg,
         });
         setIsJoining(false);
         isJoiningRef.current = false;
@@ -834,14 +1033,15 @@ export function useCall({
       isMutedRef.current = false;
       setIsMuted(false);
       setIceMode(iceConfig.mode);
-      setPeerStatus('connecting');
 
       // 4. Initialize speaking monitor & anti-spoofing Realtime signaling outbox
       const monitor = new AudioLevelMonitor((key, speaking) => {
         if (key === 'local') {
           setIsLocalSpeaking(speaking);
-        } else if (key === activePeerIdRef.current) {
-          setIsPeerSpeaking(speaking);
+        } else {
+          setPeerSpeakingMap((prev) =>
+            prev[key] === speaking ? prev : { ...prev, [key]: speaking }
+          );
         }
       });
       monitor.trackStream('local', micStream, false);
@@ -853,8 +1053,11 @@ export function useCall({
         callSessionId: selfSlot.callSessionId,
         onSignal: handleIncomingSignal,
         onPeerSubscribed: (peerId) => {
-          peerSubscribedRef.current = true;
           signaling.sendMediaState(peerId, { isMuted: isMutedRef.current });
+        },
+        onRecover: () => {
+          if (!isInCallRef.current) return;
+          setError((prev) => (prev?.code === 'SIGNALING_ERROR' ? null : prev));
         },
         onError: (msg) => {
           if (!isInCallRef.current) return;
@@ -943,8 +1146,8 @@ export function useCall({
       setIsLocalSpeaking(false);
     }
 
-    if (activePeerIdRef.current) {
-      signalingRef.current?.sendMediaState(activePeerIdRef.current, { isMuted: nextMuted });
+    for (const peerId of peerManagersRef.current.keys()) {
+      signalingRef.current?.sendMediaState(peerId, { isMuted: nextMuted });
     }
   }, []);
 
@@ -952,21 +1155,51 @@ export function useCall({
     setError(null);
   }, []);
 
-  const hasPartnerSlot = useMemo(
-    () => callSlots.some((slot) => slot.userId !== user.id && isSlotFresh(slot)),
+  const clearCallEndedNotice = useCallback(() => {
+    setCallEndedNotice(null);
+  }, []);
+
+  const activeRemoteSlots = useMemo(
+    () => callSlots.filter((slot) => slot.userId !== user.id && isSlotFresh(slot)),
     [callSlots, user.id]
   );
 
+  const isPeerSpeaking = useMemo(
+    () => Object.values(peerSpeakingMap).some(Boolean),
+    [peerSpeakingMap]
+  );
+
+  const isAudioBlocked = useMemo(
+    () => Object.values(blockedAudioPeers).some(Boolean),
+    [blockedAudioPeers]
+  );
+
+  const connectionMode = useMemo<CallConnectionMode>(() => {
+    const modes = activeRemoteSlots
+      .map((slot) => peerConnectionModes[slot.userId])
+      .filter((m): m is CallConnectionMode => Boolean(m && m !== 'unknown'));
+
+    if (modes.includes('relayed')) return 'relayed';
+    if (modes.includes('stun-only')) return 'stun-only';
+    if (modes.includes('p2p')) return 'p2p';
+    return 'unknown';
+  }, [activeRemoteSlots, peerConnectionModes]);
+
   const status = useMemo<CallStatus>(() => {
     if (isInCall) {
-      if (!hasPartnerSlot) return 'waiting';
-      if (peerStatus === 'failed') return 'error';
-      return peerStatus;
+      if (activeRemoteSlots.length === 0) return 'waiting';
+      const statuses = activeRemoteSlots.map(
+        (slot) => peerStatuses[slot.userId] ?? 'connecting'
+      );
+      if (statuses.includes('connected')) return 'connected';
+      if (statuses.includes('reconnecting')) return 'reconnecting';
+      if (statuses.every((s) => s === 'failed')) return 'error';
+      return 'connecting';
     }
     if (isJoining) return 'joining';
     if (error) return 'error';
     return 'idle';
-  }, [isInCall, hasPartnerSlot, peerStatus, isJoining, error]);
+  }, [isInCall, activeRemoteSlots, peerStatuses, isJoining, error]);
 
   const participants = useMemo<CallParticipantState[]>(() => {
     return callSlots
@@ -981,19 +1214,21 @@ export function useCall({
           ? user.username
           : presenceMatch?.username || memberMatch?.username || cached?.username || 'Watch Partner';
 
+        const peerMode = peerConnectionModes[slot.userId] ?? 'unknown';
+
         return {
           userId: slot.userId,
           username,
           avatarUrl: presenceMatch?.avatarUrl || cached?.avatarUrl,
           callSessionId: slot.callSessionId,
           isLocal,
-          isMuted: isLocal ? isMuted : isPeerMuted,
-          isSpeaking: isLocal ? isLocalSpeaking : isPeerSpeaking,
+          isMuted: isLocal ? isMuted : Boolean(peerMutedMap[slot.userId]),
+          isSpeaking: isLocal ? isLocalSpeaking : Boolean(peerSpeakingMap[slot.userId]),
           connectionMode: isLocal
             ? iceMode === 'stun-only'
               ? 'stun-only'
               : connectionMode
-            : connectionMode,
+            : peerMode,
         };
       });
   }, [
@@ -1004,11 +1239,12 @@ export function useCall({
     members,
     profileCache,
     isMuted,
-    isPeerMuted,
+    peerMutedMap,
     isLocalSpeaking,
-    isPeerSpeaking,
+    peerSpeakingMap,
     iceMode,
     connectionMode,
+    peerConnectionModes,
   ]);
 
   const freshSlotCount = useMemo(
@@ -1018,10 +1254,15 @@ export function useCall({
 
   const isCallFull = !isInCall && freshSlotCount >= CALL_CONSTANTS.MAX_CALL_PARTICIPANTS;
 
-  const incomingCaller = useMemo<CallParticipantState | null>(() => {
-    if (isInCall || freshSlotCount !== 1) return null;
-    return participants.find((p) => !p.isLocal) ?? null;
-  }, [isInCall, freshSlotCount, participants]);
+  const activeCallers = useMemo<CallParticipantState[]>(() => {
+    if (isInCall || freshSlotCount === 0 || isCallFull) return [];
+    return participants.filter((p) => !p.isLocal);
+  }, [isInCall, freshSlotCount, isCallFull, participants]);
+
+  const incomingCaller = useMemo<CallParticipantState | null>(
+    () => activeCallers[0] ?? null,
+    [activeCallers]
+  );
 
   return {
     status,
@@ -1035,12 +1276,15 @@ export function useCall({
     iceMode,
     connectionMode,
     error,
+    callEndedNotice,
     participants,
+    activeCallers,
     incomingCaller,
     joinCall,
     leaveCall,
     toggleMute,
     unlockRemoteAudio,
     clearError,
+    clearCallEndedNotice,
   };
 }

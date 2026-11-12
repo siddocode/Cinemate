@@ -123,12 +123,13 @@ describe('Phase 10.4 — useCall Hook & Luxury Cinema Voice UI', () => {
       !voiceCallBarCode.includes('<video'),
       'VoiceCallBar must remain strictly voice-only with zero video elements'
     );
-    assert.match(voiceCallBarCode, /is on voice/);
-    assert.match(voiceCallBarCode, /Voice Full 2\/2/);
+    assert.match(voiceCallBarCode, /is on voice|are on voice/);
+    assert.match(voiceCallBarCode, /Voice Full \{CALL_CONSTANTS\.MAX_CALL_PARTICIPANTS\}\/\{CALL_CONSTANTS\.MAX_CALL_PARTICIPANTS\}/);
     assert.match(voiceCallBarCode, /Tap to enable partner audio/);
     assert.match(voiceCallBarCode, /STUN-only Dev/);
+    assert.match(voiceCallBarCode, /Auto-duck:/);
     assert.match(roomHeaderCode, /Join Voice/);
-    assert.match(roomHeaderCode, /Voice 2\/2/);
+    assert.match(roomHeaderCode, /CALL_CONSTANTS\.MAX_CALL_PARTICIPANTS/);
   });
 });
 

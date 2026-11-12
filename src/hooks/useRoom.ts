@@ -451,9 +451,15 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
         }
       );
 
+    let errorDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleSubscribeStatus = async (status: string, err?: Error) => {
       if (isDisposed) return;
       if (status === 'SUBSCRIBED') {
+        if (errorDebounceTimer) {
+          clearTimeout(errorDebounceTimer);
+          errorDebounceTimer = null;
+        }
         setRealtimeError(null);
         setChannel(roomChannel);
         await roomChannel.track({
@@ -463,8 +469,32 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
           clientState: 'ready',
           joinedAt: userJoinedAt,
         });
-      } else if (status === 'CHANNEL_ERROR') {
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         const detail = err?.message || 'Realtime private channel authorization failed.';
+        const isTransientTransport =
+          status === 'TIMED_OUT' ||
+          /socket closed|transport failure|connection lost|timed out/i.test(detail);
+
+        if (isTransientTransport) {
+          void getAuthenticatedAccessToken(supabase)
+            .then((token) => supabase.realtime.setAuth(token ?? null))
+            .catch(() => {});
+
+          if (!errorDebounceTimer) {
+            errorDebounceTimer = setTimeout(() => {
+              errorDebounceTimer = null;
+              if (!isDisposed) {
+                setRealtimeError('Live room sync connection interrupted. Reconnecting…');
+              }
+            }, 2500);
+          }
+          return;
+        }
+
+        if (errorDebounceTimer) {
+          clearTimeout(errorDebounceTimer);
+          errorDebounceTimer = null;
+        }
         console.warn(
           `[Syncora] Realtime authorization failed for ${channelName}. Apply migrations 005 & 006 (or full_setup.sql) in Supabase SQL Editor and ensure you are a member of this room.`,
           detail
@@ -492,6 +522,10 @@ export function useRoom(roomCode: string, initialTitle?: string, allowCreate = f
 
     return () => {
       isDisposed = true;
+      if (errorDebounceTimer) {
+        clearTimeout(errorDebounceTimer);
+        errorDebounceTimer = null;
+      }
       setChannel(null);
       if (graceTimerRef.current) {
         clearInterval(graceTimerRef.current);

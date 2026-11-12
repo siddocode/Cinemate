@@ -44,8 +44,8 @@ export const SYNC_CONSTANTS = {
 } as const;
 
 export const CALL_CONSTANTS = {
-  // Voice call hard limit (independent from 4-viewer watch-room limit)
-  MAX_CALL_PARTICIPANTS: 2,
+  // Voice call hard limit (matches 4-viewer room cap for 4-way audio mesh)
+  MAX_CALL_PARTICIPANTS: 4,
 
   // Slot lease & heartbeat timing (matches SQL 60s TTL in 006_voice_call_authorization.sql)
   CALL_SLOT_TTL_SECONDS: 60,

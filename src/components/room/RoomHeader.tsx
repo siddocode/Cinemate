@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Copy,
   Check,
-  Tv,
+  Film,
   LogOut,
   AlertTriangle,
   Star,
@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DuoStatus, ParticipantPresence, Room } from '@/core/types/room.types';
 import { CallParticipantState, CallStatus } from '@/core/types/call.types';
-import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
+import { CALL_CONSTANTS, SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
 import { useSession } from '@/hooks/useSession';
 import { favoriteService } from '@/lib/services/favoriteService';
 
@@ -296,17 +296,19 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             {isHost ? 'Host' : isCoHost ? 'Co-Host' : 'Viewer'}
           </Badge>
 
-          {/* Change Video Button (Host, Co-Host or permitted controllers) */}
+          {/* Change Watch Media Source Button (Host, Co-Host or permitted controllers) */}
           {(canControl ?? isHost) && (
             <Button
               variant="primary"
               size="sm"
               onClick={onChangeVideoClick}
               className="h-7 sm:h-8 text-[11px] sm:text-xs px-2.5 sm:px-3 rounded-full"
-              leftIcon={<Tv className="w-3.5 h-3.5" />}
+              leftIcon={<Film className="w-3.5 h-3.5" />}
+              title="Load YouTube link, video URL, or upload a movie file to watch together"
+              aria-label="Load watch media or upload video"
             >
-              <span className="hidden sm:inline">Video / Upload</span>
-              <span className="sm:hidden">Video</span>
+              <span className="hidden sm:inline">Media / URL</span>
+              <span className="sm:hidden">Media</span>
             </Button>
           )}
 
@@ -323,16 +325,16 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                         ? 'bg-[#E9B872] animate-pulse'
                         : 'bg-[#7AD3A8]/70'
                     }`}
-                    title={`Voice ${voiceCall.participantCount}/2 (${voiceCall.status})`}
+                    title={`Voice ${voiceCall.participantCount}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} (${voiceCall.status})`}
                   />
                   <span className="hidden xl:inline text-[11px] font-mono text-[#E8DDC5] px-1 whitespace-nowrap">
                     {voiceCall.status === 'connected'
-                      ? `Voice ${voiceCall.participantCount}/2`
+                      ? `Voice Call ${voiceCall.participantCount}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}`
                       : voiceCall.status === 'reconnecting'
                       ? 'Reconnecting'
                       : voiceCall.status === 'connecting'
                       ? 'Connecting'
-                      : 'Voice 1/2'}
+                      : `Voice Call 1/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}`}
                   </span>
                   <button
                     type="button"
@@ -357,8 +359,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     onClick={() => void voiceCall.onLeaveCall()}
                     disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
                     className="h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center text-[#F2B8B2] hover:bg-[#3A1E1C] transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
-                    title="Leave voice call"
-                    aria-label="Leave voice call"
+                    title={isHost ? 'End voice call for everyone' : 'Leave voice call'}
+                    aria-label={isHost ? 'End voice call for everyone' : 'Leave voice call'}
                   >
                     {voiceCall.isLeaving ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -371,10 +373,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 <Badge
                   variant="default"
                   className="h-7 sm:h-8 text-[10px] sm:text-[11px] px-2.5 hidden sm:inline-flex whitespace-nowrap"
-                  title="Voice call is limited to 2 participants"
+                  title={`Voice call is limited to ${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} participants`}
                 >
                   <Headphones className="w-3 h-3 text-[#9670FF]" />
-                  <span>Voice 2/2</span>
+                  <span>
+                    Voice {CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}/{CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}
+                  </span>
                 </Badge>
               ) : voiceCall.incomingCaller ? (
                 <Button
@@ -385,14 +389,16 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                   disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
                   className="h-7 sm:h-8 text-[11px] sm:text-xs px-2.5 sm:px-3 rounded-full whitespace-nowrap"
                   leftIcon={<PhoneCall className="w-3.5 h-3.5 animate-pulse" />}
+                  title="Join audio-only voice call"
+                  aria-label="Join audio-only voice call"
                 >
                   <span className="hidden sm:inline">
                     {voiceCall.status === 'joining'
                       ? 'Joining…'
-                      : `Join · ${voiceCall.incomingCaller.username}`}
+                      : `Join Voice · ${voiceCall.incomingCaller.username}`}
                   </span>
                   <span className="sm:hidden">
-                    {voiceCall.status === 'joining' ? 'Joining…' : 'Join'}
+                    {voiceCall.status === 'joining' ? 'Joining…' : 'Join Voice'}
                   </span>
                 </Button>
               ) : (
@@ -404,13 +410,14 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                   disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
                   className="h-7 sm:h-8 text-[11px] sm:text-xs px-2 sm:px-3 rounded-full whitespace-nowrap"
                   leftIcon={<Mic className="w-3.5 h-3.5 text-[#9670FF]" />}
+                  title="Start audio-only voice call (no camera)"
                   aria-label="Join voice call"
                 >
                   <span className="hidden sm:inline">
-                    {voiceCall.status === 'joining' ? 'Joining…' : 'Join Voice'}
+                    {voiceCall.status === 'joining' ? 'Joining…' : 'Voice Call'}
                   </span>
                   <span className="sm:hidden">
-                    {voiceCall.status === 'joining' ? 'Joining…' : 'Voice'}
+                    {voiceCall.status === 'joining' ? 'Joining…' : 'Voice Call'}
                   </span>
                 </Button>
               )}

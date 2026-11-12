@@ -165,3 +165,15 @@
 - [x] Add unit/integration tests (`tests/room-controls-and-sync-fixes.test.mjs`) and update documentation (`CURRENT_STATE.md`, `TASKS.md`).
 - [ ] User manual SQL migration: run `supabase/migrations/007_room_permissions_and_kick.sql` (or updated `supabase/full_setup.sql`) in the Supabase SQL Editor.
 
+---
+
+## Phase 12 — 4-Way Mesh Voice Calls, Video Auto-Ducking & Custom App Icon
+- [x] Expand `join_room_call` capacity from `2` to `4` in `supabase/migrations/008_four_way_voice_mesh.sql` and `supabase/full_setup.sql`, and update `CALL_CONSTANTS.MAX_CALL_PARTICIPANTS = 4` in `src/lib/constants/sync.constants.ts`.
+- [x] Upgrade `CallSignaling.ts` (`syncPeers`, `addPeer`, `removePeer`) and `useCall.ts` (`peerManagersRef`, per-peer `<audio>` sinks, per-peer mute/speaking/status maps) for full 4-way WebRTC audio mesh.
+- [x] Update `VoiceCallBar.tsx` and `RoomHeader.tsx` for multi-caller banners (`N/4`) and `Auto-duck: On/Off` toggle.
+- [x] Implement video auto-ducking during active voice calls in `UniversalPlayer.tsx` wired from `RoomView.tsx`.
+- [x] Replace default `src/app/favicon.ico` with Syncora's custom `src/app/icon.svg`.
+- [x] End the voice call for all participants when the room host leaves (`009_host_leave_ends_voice_call.sql` + `full_setup.sql`, `useCall.ts` `host-ended` bye & `DELETE` teardown, `VoiceCallBar.tsx` notice banner, `RoomHeader.tsx` host tooltip, `RoomView.tsx`), fix rapid leave→rejoin channel races and transient `socket closed: 1006` / Realtime reconnect errors (`CallSignaling.ts`, `useRoom.ts`), and disambiguate `Media / URL` vs audio-only `Voice Call` (`RoomHeader.tsx`, `VoiceCallBar.tsx`).
+- [x] Add Phase 12 tests (`tests/voice-call-phase12_mesh_and_ducking.test.mjs`) and update `CURRENT_STATE.md` & `TASKS.md`.
+- [ ] User manual SQL migration: run `supabase/migrations/008_four_way_voice_mesh.sql` and `supabase/migrations/009_host_leave_ends_voice_call.sql` (or updated `supabase/full_setup.sql`) in the Supabase SQL Editor.
+

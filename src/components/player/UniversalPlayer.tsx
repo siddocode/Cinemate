@@ -42,6 +42,9 @@ interface UniversalPlayerProps {
   onPersistSnapshot?: (position: number, isPlaying: boolean) => void;
   onVideoMismatch?: (videoUrl: string, videoType?: VideoSourceType) => void;
   onChangeVideoClick?: () => void;
+  isInVoiceCall?: boolean;
+  isVoiceAutoDuckEnabled?: boolean;
+  isVoiceSpeaking?: boolean;
   className?: string;
 }
 
@@ -57,6 +60,9 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   onPersistSnapshot,
   onVideoMismatch,
   onChangeVideoClick,
+  isInVoiceCall = false,
+  isVoiceAutoDuckEnabled = true,
+  isVoiceSpeaking = false,
   className,
 }) => {
   const { user } = useSession();
@@ -190,6 +196,28 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
 
     return () => clearInterval(interval);
   }, [adapter, duration]);
+
+  // Apply auto-ducking whenever voice call / speaking state or target volume changes
+  useEffect(() => {
+    if (!adapter) return;
+    if (isMuted || autoplayNotice === 'muted') {
+      adapter.setVolume(0);
+      return;
+    }
+
+    const duckFactor =
+      isInVoiceCall && isVoiceAutoDuckEnabled ? (isVoiceSpeaking ? 0.22 : 0.35) : 1;
+    const effectiveVolume = Math.max(0, Math.min(1, Number((volume * duckFactor).toFixed(2))));
+    adapter.setVolume(effectiveVolume);
+  }, [
+    adapter,
+    volume,
+    isMuted,
+    autoplayNotice,
+    isInVoiceCall,
+    isVoiceAutoDuckEnabled,
+    isVoiceSpeaking,
+  ]);
 
   // Sync fullscreen button icon when user presses Escape
   useEffect(() => {

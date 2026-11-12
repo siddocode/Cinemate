@@ -226,9 +226,13 @@ describe('Phase 10.2 — Two-Person Voice Call Authorization & TURN Service', ()
     assert.match(middlewareCode, /status:\s*401/);
   });
 
-  it('7. Migration 006 and full_setup.sql enforce 2-person call cap, anti-spoofing Realtime RLS, and zero media/SDP storage', () => {
+  it('7. Migration 006/008 and full_setup.sql enforce call cap, anti-spoofing Realtime RLS, and zero media/SDP storage', () => {
     const mig006 = fs.readFileSync(
       path.join(process.cwd(), 'supabase/migrations/006_voice_call_authorization.sql'),
+      'utf-8'
+    );
+    const mig008 = fs.readFileSync(
+      path.join(process.cwd(), 'supabase/migrations/008_four_way_voice_mesh.sql'),
       'utf-8'
     );
     const fullSetup = fs.readFileSync(
@@ -238,7 +242,6 @@ describe('Phase 10.2 — Two-Person Voice Call Authorization & TURN Service', ()
 
     for (const sql of [mig006, fullSetup]) {
       assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.room_call_participants/);
-      assert.match(sql, /v_max CONSTANT INTEGER := 2/);
       assert.match(sql, /syncora:room_call:/);
       assert.match(sql, /syncora_call_members_can_receive/);
       assert.match(sql, /syncora_call_members_can_send/);
@@ -246,6 +249,12 @@ describe('Phase 10.2 — Two-Person Voice Call Authorization & TURN Service', ()
       assert.match(sql, /is_room_call_participant\(v_room_id, v_uid\)/);
       assert.match(sql, /REVOKE EXECUTE ON FUNCTION public\.join_room_call\(UUID\) FROM PUBLIC, anon/);
       assert.match(sql, /REVOKE ALL ON TABLE public\.call_credential_requests FROM PUBLIC, anon, authenticated/);
+    }
+
+    assert.match(mig006, /v_max CONSTANT INTEGER := 2/);
+    for (const sql of [mig008, fullSetup]) {
+      assert.match(sql, /v_max CONSTANT INTEGER := 4/);
+      assert.match(sql, /REVOKE EXECUTE ON FUNCTION public\.join_room_call\(UUID\) FROM PUBLIC, anon/);
     }
   });
 });

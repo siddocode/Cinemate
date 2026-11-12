@@ -973,9 +973,10 @@ AS $$
 #variable_conflict use_column
 DECLARE
   v_uid UUID := auth.uid();
-  v_max CONSTANT INTEGER := 2;
+  v_max CONSTANT INTEGER := 4;
   v_count INTEGER;
   v_already_in BOOLEAN;
+  v_host_expired BOOLEAN := FALSE;
   v_now TIMESTAMPTZ := TIMEZONE('utc', NOW());
 BEGIN
   IF v_uid IS NULL OR p_room_id IS NULL THEN
@@ -988,15 +989,28 @@ BEGIN
       USING ERRCODE = '42501', HINT = 'NOT_ROOM_MEMBER';
   END IF;
 
-  -- Serialize concurrent join attempts for this room's 2-slot voice call
+  -- Serialize concurrent join attempts for this room's 4-slot voice mesh
   PERFORM pg_advisory_xact_lock(
     hashtextextended('syncora:room_call:' || p_room_id::text, 0)
   );
 
-  -- Reclaim crashed/abandoned slots older than 60s before checking capacity
-  DELETE FROM public.room_call_participants rcp
-  WHERE rcp.room_id = p_room_id
-    AND rcp.last_heartbeat_at < v_now - INTERVAL '60 seconds';
+  -- If the host's active slot went stale (>60s), end the entire previous call
+  SELECT EXISTS (
+    SELECT 1 FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id
+      AND public.is_room_host(p_room_id, rcp.user_id)
+      AND rcp.last_heartbeat_at < v_now - INTERVAL '60 seconds'
+  ) INTO v_host_expired;
+
+  IF v_host_expired THEN
+    DELETE FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id;
+  ELSE
+    -- Reclaim crashed/abandoned slots older than 60s before checking capacity
+    DELETE FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id
+      AND rcp.last_heartbeat_at < v_now - INTERVAL '60 seconds';
+  END IF;
 
   SELECT EXISTS (
     SELECT 1 FROM public.room_call_participants rcp
@@ -1049,10 +1063,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_uid UUID := auth.uid();
   v_now TIMESTAMPTZ := TIMEZONE('utc', NOW());
   v_row_count INTEGER := 0;
+  v_host_expired BOOLEAN := FALSE;
 BEGIN
   IF v_uid IS NULL OR p_room_id IS NULL THEN
     RETURN FALSE;
@@ -1067,6 +1083,19 @@ BEGIN
   PERFORM pg_advisory_xact_lock(
     hashtextextended('syncora:room_call:' || p_room_id::text, 0)
   );
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id
+      AND public.is_room_host(p_room_id, rcp.user_id)
+      AND rcp.last_heartbeat_at < v_now - INTERVAL '60 seconds'
+  ) INTO v_host_expired;
+
+  IF v_host_expired THEN
+    DELETE FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id;
+    RETURN FALSE;
+  END IF;
 
   DELETE FROM public.room_call_participants rcp
   WHERE rcp.room_id = p_room_id
@@ -1088,6 +1117,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_uid UUID := auth.uid();
 BEGIN
@@ -1095,13 +1125,23 @@ BEGIN
     RETURN;
   END IF;
 
-  DELETE FROM public.room_call_participants rcp
-  WHERE rcp.room_id = p_room_id
-    AND rcp.user_id = v_uid;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('syncora:room_call:' || p_room_id::text, 0)
+  );
+
+  -- Host leaving voice ends the entire room voice call for all participants
+  IF public.is_room_host(p_room_id, v_uid) THEN
+    DELETE FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id;
+  ELSE
+    DELETE FROM public.room_call_participants rcp
+    WHERE rcp.room_id = p_room_id
+      AND rcp.user_id = v_uid;
+  END IF;
 END;
 $$;
 
--- Automatically free a voice call slot if a member leaves or is removed from the room
+-- Automatically free voice call slots when a member leaves; if host leaves, end for all
 CREATE OR REPLACE FUNCTION public.cleanup_call_on_member_leave()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1109,8 +1149,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  DELETE FROM public.room_call_participants
-  WHERE room_id = OLD.room_id AND user_id = OLD.user_id;
+  IF public.is_room_host(OLD.room_id, OLD.user_id) THEN
+    DELETE FROM public.room_call_participants
+    WHERE room_id = OLD.room_id;
+  ELSE
+    DELETE FROM public.room_call_participants
+    WHERE room_id = OLD.room_id AND user_id = OLD.user_id;
+  END IF;
   RETURN OLD;
 END;
 $$;

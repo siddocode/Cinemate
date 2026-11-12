@@ -66,11 +66,13 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isVoiceAutoDuckEnabled, setIsVoiceAutoDuckEnabled] = useState(true);
   const hasLoadedInitialVideo = useRef(false);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const voiceCall = useCall({
     roomId: room?.id,
+    hostId: room?.hostId,
     user,
     presenceList,
     members,
@@ -218,6 +220,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
       : `${otherParticipants.length} viewers`;
 
   const sharedVoiceBarProps = {
+    isHost,
     status: voiceCall.status,
     isInCall: voiceCall.isInCall,
     isLeaving: voiceCall.isLeaving,
@@ -227,8 +230,12 @@ export const RoomView: React.FC<RoomViewProps> = ({
     iceMode: voiceCall.iceMode,
     connectionMode: voiceCall.connectionMode,
     error: voiceCall.error,
+    callEndedNotice: voiceCall.callEndedNotice,
     participants: voiceCall.participants,
+    activeCallers: voiceCall.activeCallers,
     incomingCaller: voiceCall.incomingCaller,
+    autoDuckEnabled: isVoiceAutoDuckEnabled,
+    onToggleAutoDuck: () => setIsVoiceAutoDuckEnabled((prev) => !prev),
     onJoin: () => {
       void voiceCall.joinCall();
     },
@@ -240,6 +247,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
       void voiceCall.unlockRemoteAudio();
     },
     onClearError: voiceCall.clearError,
+    onClearCallEndedNotice: voiceCall.clearCallEndedNotice,
   };
 
   return (
@@ -317,6 +325,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 onPersistSnapshot={persistPlaybackSnapshot}
                 onVideoMismatch={applyRemoteVideo}
                 onChangeVideoClick={() => setIsChangeVideoOpen(true)}
+                isInVoiceCall={voiceCall.isInCall}
+                isVoiceAutoDuckEnabled={isVoiceAutoDuckEnabled}
+                isVoiceSpeaking={voiceCall.isLocalSpeaking || voiceCall.isPeerSpeaking}
                 className="lg:aspect-auto lg:flex-1 lg:min-h-0"
               />
             ) : (
