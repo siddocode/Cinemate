@@ -19,6 +19,11 @@ import { AccentUnderline } from '@/components/common/AccentUnderline';
 import { FeaturePillars } from '@/components/common/FeaturePillars';
 import { generateRoomCode, normalizeRoomCode } from '@/lib/utils/code';
 import { extractYouTubeId } from '@/lib/utils/youtube';
+import {
+  CREATE_ROOM_BUTTON_STAGES,
+  JOIN_ROOM_BUTTON_STAGES,
+  useLoadingStages,
+} from '@/hooks/useLoadingStages';
 
 export default function HomePage() {
   const router = useRouter();
@@ -36,6 +41,14 @@ export default function HomePage() {
   const [navigatingAction, setNavigatingAction] = useState<'create' | 'join' | 'shelf' | null>(null);
 
   const isLobbyBusy = navigatingAction !== null;
+  const { stage: createButtonStage } = useLoadingStages(
+    navigatingAction === 'create',
+    CREATE_ROOM_BUTTON_STAGES
+  );
+  const { stage: joinButtonStage } = useLoadingStages(
+    navigatingAction === 'join',
+    JOIN_ROOM_BUTTON_STAGES
+  );
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,7 +184,9 @@ export default function HomePage() {
                   disabled={isLobbyBusy}
                   rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  {navigatingAction === 'create' ? 'Opening Room…' : 'Create Watch Party'}
+                  {navigatingAction === 'create'
+                    ? createButtonStage.label
+                    : 'Create Watch Party'}
                 </Button>
               </form>
             )}
@@ -199,7 +214,9 @@ export default function HomePage() {
                   disabled={isLobbyBusy}
                   rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  {navigatingAction === 'join' ? 'Joining Room…' : 'Join Room Now'}
+                  {navigatingAction === 'join'
+                    ? joinButtonStage.label
+                    : 'Join Room Now'}
                 </Button>
               </form>
             )}

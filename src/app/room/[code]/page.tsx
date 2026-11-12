@@ -1,5 +1,6 @@
 import React, { Suspense } from 'react';
 import { RoomView } from '@/components/room/RoomView';
+import { RoomLoadingState } from '@/components/room/RoomLoadingState';
 
 interface RoomPageProps {
   params: Promise<{ code: string }>;
@@ -27,18 +28,7 @@ async function RoomContent({ params, searchParams }: RoomPageProps) {
 
 export default function RoomPage(props: RoomPageProps) {
   return (
-    <Suspense
-      fallback={
-        <div className="flex-1 flex items-center justify-center bg-[#0E281F] text-[#CDBF9F]">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-[#E8DDC5]/20 border-t-[#9670FF] rounded-full animate-spin" />
-            <p className="text-[11px] font-mono uppercase tracking-[0.16em]">
-              Entering Screening Room...
-            </p>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<RoomLoadingState mode="join" />}>
       <RoomContent {...props} />
     </Suspense>
   );

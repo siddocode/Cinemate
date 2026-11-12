@@ -8,6 +8,10 @@ import { UserRoomSummary } from '@/core/types/room.types';
 import { useSession } from '@/hooks/useSession';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import {
+  REOPEN_ROOM_BUTTON_STAGES,
+  useLoadingStages,
+} from '@/hooks/useLoadingStages';
 
 function formatRelativeDate(isoDate: string): string {
   const ts = new Date(isoDate).getTime();
@@ -65,15 +69,23 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
   }, [user.id, isAuthenticated]);
 
   const isNavigating = isExternalNavigating || openingRoomId !== null;
+  const { stage: reopenButtonStage } = useLoadingStages(
+    openingRoomId !== null,
+    REOPEN_ROOM_BUTTON_STAGES
+  );
 
   const handleOpenRoom = (room: UserRoomSummary) => {
-    if (isNavigating || deletingRoomId === room.id) return;
+    if (isNavigating || deletingRoomId !== null) return;
     setOpeningRoomId(room.id);
     onStartNavigation?.();
     router.push(`/room/${room.code}`);
   };
 
-  const handleRemoveRoom = async (room: UserRoomSummary, e: React.MouseEvent) => {
+  const handleRemoveRoom = async (
+    room: UserRoomSummary,
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    e.preventDefault();
     e.stopPropagation();
     if (isNavigating || deletingRoomId !== null) return;
     setDeletingRoomId(room.id);
@@ -158,14 +170,21 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {rooms.map((room) => {
             const isHost = room.hostId === user.id;
+            const isDeletingThisRoom = deletingRoomId === room.id;
             return (
               <article
                 key={room.id}
-                onClick={() => handleOpenRoom(room)}
-                className="bg-[#173D30]/75 border border-[#E8DDC5]/16 hover:border-[#E8DDC5]/35 hover:bg-[#173D30]/95 rounded-xl p-3 sm:p-3.5 transition-colors duration-150 flex flex-col justify-between gap-2.5 cursor-pointer"
+                className={`bg-[#173D30]/75 border border-[#E8DDC5]/16 hover:border-[#E8DDC5]/35 hover:bg-[#173D30]/95 rounded-xl p-3 sm:p-3.5 transition-all duration-150 flex flex-col justify-between gap-2.5 ${
+                  isDeletingThisRoom ? 'opacity-60 pointer-events-none' : ''
+                }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRoom(room)}
+                    disabled={isNavigating || deletingRoomId !== null}
+                    className="min-w-0 flex-1 text-left cursor-pointer disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9670FF] rounded-lg"
+                  >
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold text-[#F7F4EC] truncate">
                         {room.title}
@@ -182,17 +201,18 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                         {formatRelativeDate(room.lastSyncedAt)}
                       </span>
                     </div>
-                  </div>
+                  </button>
 
                   <button
                     type="button"
-                    onClick={(e) => handleRemoveRoom(room, e)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => void handleRemoveRoom(room, e)}
                     disabled={isNavigating || deletingRoomId !== null}
-                    className="p-1.5 rounded-lg bg-[#0E281F]/80 hover:bg-[#3A1E1C] border border-[#E8DDC5]/14 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer shrink-0 disabled:opacity-45 disabled:pointer-events-none"
+                    className="min-w-[36px] min-h-[36px] sm:min-w-[30px] sm:min-h-[30px] flex items-center justify-center rounded-lg bg-[#0E281F]/80 hover:bg-[#3A1E1C] border border-[#E8DDC5]/14 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer shrink-0 disabled:opacity-45 disabled:pointer-events-none"
                     title={isHost ? 'Delete room' : 'Leave room'}
                     aria-label={isHost ? `Delete ${room.title}` : `Leave ${room.title}`}
                   >
-                    {deletingRoomId === room.id ? (
+                    {isDeletingThisRoom ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
                       <Trash2 className="w-3.5 h-3.5" />
@@ -209,15 +229,18 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                     variant="primary"
                     size="sm"
                     onClick={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
                       handleOpenRoom(room);
                     }}
                     isLoading={openingRoomId === room.id}
-                    disabled={isNavigating || deletingRoomId === room.id}
+                    disabled={isNavigating || deletingRoomId !== null}
                     className="h-7 px-3 text-[11px] shrink-0 rounded-lg"
                     leftIcon={<Play className="w-3 h-3 fill-current" />}
                   >
-                    {openingRoomId === room.id ? 'Opening…' : 'Reopen'}
+                    {openingRoomId === room.id
+                      ? reopenButtonStage.label
+                      : 'Reopen'}
                   </Button>
                 </div>
               </article>

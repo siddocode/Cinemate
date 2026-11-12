@@ -72,23 +72,27 @@ export const Navbar: React.FC = () => {
       <div
         className={`${
           isRoomRoute ? 'max-w-full' : 'max-w-7xl'
-        } mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-4`}
+        } mx-auto px-2.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4`}
       >
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2.5 group min-w-0">
-          <BrandMark size="sm" className="group-hover:border-[#9670FF]" />
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="font-serif text-xl sm:text-2xl font-medium tracking-tight text-[#F7F4EC] leading-none">
+        <Link href="/" className="flex items-center gap-2 sm:gap-2.5 group min-w-0 shrink">
+          <BrandMark size="sm" className="group-hover:border-[#9670FF] shrink-0" />
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span className="font-serif text-lg sm:text-2xl font-medium tracking-tight text-[#F7F4EC] leading-none truncate">
               Syncora
             </span>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#E8DDC5] text-[#102B23] text-[10px] font-bold uppercase tracking-[0.12em] leading-tight">
+            <span
+              className={`${
+                isRoomRoute ? 'hidden sm:inline-flex' : 'inline-flex'
+              } items-center px-2 sm:px-2.5 py-0.5 rounded-full bg-[#E8DDC5] text-[#102B23] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.12em] leading-tight shrink-0`}
+            >
               Lounge
             </span>
           </div>
         </Link>
 
         {/* User Identity / Session Controls */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           {!isAuthenticated ? (
             isAuthRoute ? (
               <>
@@ -96,7 +100,7 @@ export const Navbar: React.FC = () => {
                   <Button
                     variant={pathname === '/register' ? 'outline' : 'secondary'}
                     size="sm"
-                    className="text-xs rounded-full px-3.5"
+                    className="text-xs rounded-full px-2.5 sm:px-3.5"
                     leftIcon={<LogIn className="w-3.5 h-3.5 text-[#9670FF]" />}
                   >
                     Sign In
@@ -107,7 +111,7 @@ export const Navbar: React.FC = () => {
                   <Button
                     variant={pathname === '/register' ? 'primary' : 'outline'}
                     size="sm"
-                    className="text-xs rounded-full px-4"
+                    className="text-xs rounded-full px-3 sm:px-4"
                   >
                     Register
                   </Button>
@@ -119,7 +123,7 @@ export const Navbar: React.FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => handleOpenAuth('signin')}
-                  className="text-xs rounded-full px-3.5"
+                  className="text-xs rounded-full px-2.5 sm:px-3.5"
                   leftIcon={<LogIn className="w-3.5 h-3.5 text-[#9670FF]" />}
                 >
                   Sign In
@@ -129,7 +133,7 @@ export const Navbar: React.FC = () => {
                   variant="primary"
                   size="sm"
                   onClick={() => handleOpenAuth('signup')}
-                  className="text-xs rounded-full px-4"
+                  className="text-xs rounded-full px-3 sm:px-4"
                 >
                   Register
                 </Button>
@@ -141,15 +145,15 @@ export const Navbar: React.FC = () => {
                 type="button"
                 onClick={handleOpenNameModal}
                 disabled={isSigningOut}
-                className="flex items-center gap-2.5 pl-1.5 pr-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/20 hover:border-[#E8DDC5]/40 transition-colors text-xs group cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                className="flex items-center gap-1.5 sm:gap-2.5 pl-1 pr-2 sm:pl-1.5 sm:pr-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/20 hover:border-[#E8DDC5]/40 transition-colors text-xs group cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
                 title="Click to edit display name"
               >
-                <div className="w-7 h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-xs uppercase shrink-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-[11px] sm:text-xs uppercase shrink-0">
                   {(user.username || user.email || 'U').charAt(0)}
                 </div>
                 <div className="flex flex-col text-left min-w-0">
                   <span
-                    className="font-medium max-w-[92px] sm:max-w-[140px] truncate text-[#F7F4EC] leading-tight"
+                    className="font-medium max-w-[76px] sm:max-w-[140px] truncate text-[#F7F4EC] leading-tight"
                     suppressHydrationWarning
                   >
                     {user.username || 'User'}
@@ -170,8 +174,9 @@ export const Navbar: React.FC = () => {
                 size="sm"
                 onClick={handleSignOut}
                 isLoading={isSigningOut}
-                className="text-xs text-[#E8DDC5]/85 hover:text-[#F7F4EC] rounded-full"
+                className="text-xs text-[#E8DDC5]/85 hover:text-[#F7F4EC] rounded-full px-2 sm:px-3"
                 title="Sign Out"
+                aria-label="Sign Out"
                 leftIcon={<LogOut className="w-3.5 h-3.5" />}
               >
                 <span className="hidden sm:inline">

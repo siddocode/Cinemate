@@ -7,6 +7,10 @@ import { favoriteService, FavoriteItem } from '@/lib/services/favoriteService';
 import { useSession } from '@/hooks/useSession';
 import { generateRoomCode } from '@/lib/utils/code';
 import { Button } from '@/components/ui/Button';
+import {
+  FAVORITE_ROOM_BUTTON_STAGES,
+  useLoadingStages,
+} from '@/hooks/useLoadingStages';
 
 interface FavoritesSectionProps {
   isExternalNavigating?: boolean;
@@ -54,16 +58,24 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
   const displayedFavorites = isAuthenticated ? favorites : [];
 
   const isNavigating = isExternalNavigating || launchingVideoId !== null;
+  const { stage: launchButtonStage } = useLoadingStages(
+    launchingVideoId !== null,
+    FAVORITE_ROOM_BUTTON_STAGES
+  );
 
   const handleLaunchFavorite = (videoId: string) => {
-    if (isNavigating || removingVideoId === videoId) return;
+    if (isNavigating || removingVideoId !== null) return;
     setLaunchingVideoId(videoId);
     onStartNavigation?.();
     const code = generateRoomCode();
     router.push(`/room/${code}?v=${encodeURIComponent(videoId)}`);
   };
 
-  const handleRemoveFavorite = async (videoId: string, e: React.MouseEvent) => {
+  const handleRemoveFavorite = async (
+    videoId: string,
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    e.preventDefault();
     e.stopPropagation();
     if (isNavigating || removingVideoId !== null) return;
     setRemovingVideoId(videoId);
@@ -158,9 +170,10 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
                   <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#091B15]/80 to-transparent pointer-events-none" />
                   <button
                     type="button"
-                    onClick={(e) => handleRemoveFavorite(fav.videoId, e)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => void handleRemoveFavorite(fav.videoId, e)}
                     disabled={isNavigating || removingVideoId !== null}
-                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-[#0E281F]/90 hover:bg-[#3A1E1C] border border-[#E8DDC5]/15 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer disabled:opacity-45 disabled:pointer-events-none"
+                    className="absolute top-2 right-2 min-w-[36px] min-h-[36px] sm:min-w-[28px] sm:min-h-[28px] flex items-center justify-center rounded-lg bg-[#0E281F]/90 hover:bg-[#3A1E1C] border border-[#E8DDC5]/15 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer disabled:opacity-45 disabled:pointer-events-none"
                     title="Remove from favorites"
                     aria-label={`Remove ${fav.videoTitle} from favorites`}
                   >
@@ -191,7 +204,9 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
                 className="w-full text-xs mt-3.5 justify-center"
                 leftIcon={<Play className="w-3 h-3 fill-current" />}
               >
-                {launchingVideoId === fav.videoId ? 'Starting Room…' : 'Watch Together'}
+                {launchingVideoId === fav.videoId
+                  ? launchButtonStage.label
+                  : 'Watch Together'}
               </Button>
             </article>
           ))}

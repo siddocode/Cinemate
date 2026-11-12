@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Room, RoomMember, RoomRole, ParticipantPresence } from '@/core/types/room.types';
+import { copyTextToClipboard } from '@/lib/utils/share';
 import {
   Shield,
   ShieldCheck,
@@ -52,11 +53,13 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
   const [confirmKickId, setConfirmKickId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const success = await copyTextToClipboard(window.location.href);
+      if (success) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     }
   };
 

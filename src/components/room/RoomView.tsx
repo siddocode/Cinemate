@@ -16,6 +16,7 @@ import { useCall } from '@/hooks/useCall';
 import { RoomHeader } from './RoomHeader';
 import { ChangeVideoModal } from './ChangeVideoModal';
 import { RoomParticipantsModal } from './RoomParticipantsModal';
+import { RoomLoadingState } from './RoomLoadingState';
 import { VoiceCallBar } from '@/components/call/VoiceCallBar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -93,17 +94,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
 
   // Loading Screen
   if (isLoading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[#0E281F] text-[#F7F4EC] px-4">
-        <div className="w-9 h-9 border-2 border-[#E8DDC5]/20 border-t-[#9670FF] rounded-full animate-spin mb-4" />
-        <h2 className="font-serif text-2xl font-medium tracking-tight text-[#F7F4EC]">
-          Entering Screening Room
-        </h2>
-        <p className="text-xs font-mono uppercase tracking-[0.14em] text-[#CDBF9F]/75 mt-1.5">
-          Synchronizing presence &amp; playback state
-        </p>
-      </div>
-    );
+    return <RoomLoadingState mode={allowCreate ? 'create' : 'join'} />;
   }
 
   // Kicked Screen
@@ -254,7 +245,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   };
 
   return (
-    <div className="w-full h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] shrink-0 flex flex-col bg-[#091B15] overflow-hidden overscroll-none">
+    <div className="w-full h-[calc(100dvh-3.5rem)] sm:h-[calc(100dvh-4rem)] max-h-[calc(100dvh-3.5rem)] sm:max-h-[calc(100dvh-4rem)] shrink-0 flex flex-col bg-[#091B15] overflow-hidden overscroll-none">
       {/* Persistent Remote Voice Audio Sink (independent of video player lifecycle) */}
       <audio ref={voiceAudioRef} autoPlay playsInline className="hidden" aria-hidden="true" />
 
@@ -381,9 +372,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
                     : 'Awaiting Source'}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-[#CDBF9F] shrink-0">
-                <Users2 className="w-3.5 h-3.5 text-[#E8DDC5]/75" />
-                <span>
+              <div className="flex items-center gap-1.5 text-[#CDBF9F] min-w-0">
+                <Users2 className="w-3.5 h-3.5 text-[#E8DDC5]/75 shrink-0" />
+                <span className="truncate">
                   {otherParticipants.length > 0
                     ? `${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} in room · Watching with ${otherParticipants
                         .map((p) => p.username)
