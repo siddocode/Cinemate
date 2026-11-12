@@ -57,11 +57,20 @@ function AuthShell({ resolvedInitialTab, initialError, redirectTarget }: AuthShe
               initialError={initialError}
               onTabChange={setActiveTab}
               onAuthenticated={(immediate) => {
-                if (immediate) {
-                  router.replace(redirectTarget);
+                const target = redirectTarget || '/';
+                if (typeof window !== 'undefined') {
+                  if (immediate) {
+                    window.location.replace(target);
+                  } else {
+                    setTimeout(() => {
+                      window.location.replace(target);
+                    }, 1000);
+                  }
+                } else if (immediate) {
+                  router.replace(target);
                 } else {
                   setTimeout(() => {
-                    router.replace(redirectTarget);
+                    router.replace(target);
                   }, 1000);
                 }
               }}
@@ -88,7 +97,12 @@ function AuthForm({ initialTab = 'signin' }: AuthPageProps) {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace(redirectTarget);
+      const target = redirectTarget || '/';
+      if (typeof window !== 'undefined') {
+        window.location.replace(target);
+      } else {
+        router.replace(target);
+      }
     }
   }, [isAuthenticated, redirectTarget, router]);
 

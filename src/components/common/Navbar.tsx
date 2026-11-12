@@ -57,7 +57,11 @@ export const Navbar: React.FC = () => {
     setIsSigningOut(true);
     try {
       await signOut();
-      router.push('/login');
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login');
+      } else {
+        router.push('/login');
+      }
     } finally {
       setIsSigningOut(false);
     }
