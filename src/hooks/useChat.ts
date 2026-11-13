@@ -16,9 +16,11 @@ import {
 import { isSupabaseConfigured } from '@/lib/supabase/config';
 import {
   RealtimeChatMessageRow,
+  RealtimeChatSeenPayload,
   RealtimeTypingPayload,
   subscribeToRoomChatBroadcasts,
   subscribeToRoomChatInserts,
+  subscribeToRoomChatSeen,
   subscribeToRoomTyping,
 } from '@/lib/supabase/roomRealtimeBus';
 import {
@@ -177,6 +179,15 @@ export function useChat({
     });
   }, [usesPrefetchedHistory, prefetchedLoaded, prefetchedMessages]);
 
+  // Timestamp this viewer joined the room. Conversations that happened before
+  // this point are hidden so late joiners only see chat from when they arrived.
+  const selfJoinedAtMs = useMemo(() => {
+    const joinedAt = members?.find((member) => member.userId === user.id)?.joinedAt;
+    if (!joinedAt) return null;
+    const timestamp = new Date(joinedAt).getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+  }, [members, user.id]);
+
   // 1. Load initial chat messages only when useRoom did not already prefetch them
   useEffect(() => {
     if (!roomId || usesPrefetchedHistory) return;
@@ -185,7 +196,10 @@ export function useChat({
     async function loadMessages() {
       setIsLoading(true);
       try {
-        const history = await roomService.getChatMessages(roomId);
+        const history = await roomService.getChatMessages(
+          roomId,
+          selfJoinedAtMs !== null ? new Date(selfJoinedAtMs).toISOString() : undefined
+        );
         if (isMounted) {
           history.forEach((msg) => {
             if (msg.userId && msg.username && msg.username !== 'Guest' && msg.username !== 'Viewer') {
@@ -221,7 +235,7 @@ export function useChat({
     return () => {
       isMounted = false;
     };
-  }, [roomId, usesPrefetchedHistory, welcomeTimestamp]);
+  }, [roomId, usesPrefetchedHistory, welcomeTimestamp, selfJoinedAtMs]);
 
   const resolvedMessages = useMemo(() => {
     if (!usesPrefetchedHistory || !prefetchedLoaded || !prefetchedMessages) {
@@ -260,6 +274,15 @@ export function useChat({
     ? !initialHistory?.loaded && Boolean(initialHistory?.isLoading)
     : isLoading;
 
+  // Hide anything said before this viewer joined (system notices are always kept).
+  const visibleMessages = useMemo(() => {
+    if (selfJoinedAtMs === null) return resolvedMessages;
+    return resolvedMessages.filter(
+      (msg) =>
+        msg.type === 'system' || new Date(msg.createdAt).getTime() >= selfJoinedAtMs
+    );
+  }, [resolvedMessages, selfJoinedAtMs]);
+
   // 2. Realtime Subscription for incoming Broadcasts (instant) and Postgres Changes (durable)
   // Reuses events dispatched by the unified room channel when channel prop is managed by useRoom
   useEffect(() => {
@@ -288,6 +311,21 @@ export function useChat({
       };
 
       setMessages((prev) => upsertChatMessage(prev, incomingMsg));
+
+      // Broadcast seen receipt to let sender know their message was received
+      if (payload.userId !== user.id && channel) {
+        void channel.send({
+          type: 'broadcast',
+          event: 'CHAT_SEEN',
+          payload: {
+            roomId,
+            userId: user.id,
+            username: user.username,
+            lastSeenMessageId: payload.id,
+            seenAt: new Date().toISOString(),
+          },
+        }).catch(() => {});
+      }
     };
 
     const handleIncomingRow = (newRow: RealtimeChatMessageRow) => {
@@ -312,19 +350,60 @@ export function useChat({
 
       setMessages((prev) => upsertChatMessage(prev, incomingMsg));
 
+      // Broadcast seen receipt for incoming row if from another user
+      if (newRow.user_id !== user.id && channel) {
+        void channel.send({
+          type: 'broadcast',
+          event: 'CHAT_SEEN',
+          payload: {
+            roomId,
+            userId: user.id,
+            username: user.username,
+            lastSeenMessageId: newRow.id,
+            seenAt: new Date().toISOString(),
+          },
+        }).catch(() => {});
+      }
+
       // Only hit profiles table if sender is genuinely absent from member/presence cache
       if (!hasCachedName) {
         lookupAndCacheProfile(newRow.user_id);
       }
     };
 
+    const handleIncomingSeen = (seenPayload: RealtimeChatSeenPayload) => {
+      if (seenPayload.userId === user.id) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (
+            m.userId === user.id &&
+            (m.id === seenPayload.lastSeenMessageId ||
+              new Date(m.createdAt).getTime() <= new Date(seenPayload.seenAt).getTime())
+          ) {
+            const currentSeenBy = m.seenBy || [];
+            const nextSeenBy = currentSeenBy.includes(seenPayload.username)
+              ? currentSeenBy
+              : [...currentSeenBy, seenPayload.username];
+            return {
+              ...m,
+              status: 'seen',
+              seenBy: nextSeenBy,
+            };
+          }
+          return m;
+        })
+      );
+    };
+
     // Unified room channel mode (channel prop passed by RoomView/ChatContainer, even while null during initial connect)
     if (channel !== undefined) {
       const unsubBroadcast = subscribeToRoomChatBroadcasts(roomId, handleIncomingBroadcast);
       const unsubInserts = subscribeToRoomChatInserts(roomId, handleIncomingRow);
+      const unsubSeen = subscribeToRoomChatSeen(roomId, handleIncomingSeen);
       return () => {
         unsubBroadcast();
         unsubInserts();
+        unsubSeen();
       };
     }
 
@@ -429,10 +508,19 @@ export function useChat({
 
           pendingMessagesRef.current.delete(messageId);
           if (saved) {
+            // Guarantee minimum display time for "Sending..." (at least 500ms)
+            // so it never flickers or vanishes abruptly in 20ms
+            const elapsed = Date.now() - new Date(createdAt).getTime();
+            const minHold = 500;
+            if (elapsed < minHold) {
+              await new Promise((resolve) => setTimeout(resolve, minHold - elapsed));
+            }
+            if (!isMountedRef.current || activeRoomIdRef.current !== targetRoomId) return;
+
             setMessages((prev) =>
               upsertChatMessage(prev, {
                 ...saved,
-                status: 'sent',
+                status: prev.find((m) => m.id === messageId)?.status === 'seen' ? 'seen' : 'sent',
                 errorMessage: undefined,
               })
             );
@@ -620,7 +708,7 @@ export function useChat({
   );
 
   return {
-    messages: resolvedMessages,
+    messages: visibleMessages,
     sendMessage,
     retryMessage,
     dismissFailedMessage,

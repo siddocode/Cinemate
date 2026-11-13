@@ -52,8 +52,7 @@ export interface VoiceCallBarProps {
 }
 
 function getStatusMeta(
-  status: CallStatus,
-  connectionMode: CallConnectionMode
+  status: CallStatus
 ): { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'purple' } {
   switch (status) {
     case 'joining':
@@ -68,15 +67,9 @@ function getStatusMeta(
     case 'reconnecting':
       return { label: 'Reconnecting…', variant: 'warning' };
     case 'connected':
-      if (connectionMode === 'relayed') {
-        return { label: 'Live · Relayed', variant: 'success' };
-      }
-      if (connectionMode === 'stun-only') {
-        return { label: 'Live · STUN', variant: 'success' };
-      }
-      return { label: 'Live · P2P', variant: 'success' };
+      return { label: 'Voice Connected', variant: 'success' };
     case 'error':
-      return { label: 'Voice issue', variant: 'danger' };
+      return { label: 'Voice Unavailable', variant: 'danger' };
     default:
       return { label: 'Voice ready', variant: 'default' };
   }
@@ -92,7 +85,6 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
   isMuted,
   isAudioBlocked,
   iceMode,
-  connectionMode,
   error,
   callEndedNotice = null,
   participants,
@@ -143,7 +135,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
     return null;
   }
 
-  const statusMeta = getStatusMeta(status, connectionMode);
+  const statusMeta = getStatusMeta(status);
 
   return (
     <div
@@ -227,7 +219,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   ? `${callersWaiting[0].username} is on voice call`
                   : `${callersWaiting.map((c) => c.username).join(', ')} are on voice call`}
               </p>
-              <p className="text-[10px] font-mono text-[#9FE2BF]/85">
+              <p className="text-xs font-mono text-[#9FE2BF]/90">
                 {callersWaiting.length}/{CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} in voice call (audio only) · {openSlots}{' '}
                 {openSlots === 1 ? 'slot' : 'slots'} open
               </p>
@@ -239,8 +231,8 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
             onClick={onJoin}
             isLoading={isJoining}
             disabled={isBusy}
-            className="h-7 px-3 text-[11px] rounded-full shrink-0"
-            leftIcon={<PhoneCall className="w-3 h-3" />}
+            className="h-8 sm:h-7 px-3 text-xs rounded-full shrink-0"
+            leftIcon={<PhoneCall className="w-3.5 h-3.5" />}
           >
             {isJoining ? 'Joining…' : 'Join Voice Call'}
           </Button>
@@ -249,7 +241,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
 
       {/* Call Full */}
       {isCallFull && (
-        <div className="flex items-center justify-between gap-2 rounded-xl bg-[#133227] border border-[#E8DDC5]/14 px-3 py-1.5 text-[11px] text-[#CDBF9F]">
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-[#133227] border border-[#E8DDC5]/14 px-3 py-1.5 text-xs text-[#CDBF9F]">
           <div className="flex items-center gap-2 min-w-0 truncate">
             <Headphones className="w-3.5 h-3.5 text-[#9670FF] shrink-0" />
             <span className="truncate">
@@ -260,7 +252,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
               </strong>
             </span>
           </div>
-          <Badge variant="default" className="text-[10px] shrink-0">
+          <Badge variant="default" className="text-xs shrink-0">
             Voice Full {CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}/{CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}
           </Badge>
         </div>
@@ -275,18 +267,18 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
               <Badge
                 variant={statusMeta.variant}
                 dot={status !== 'joining'}
-                className="text-[10px] py-0.5 px-2 whitespace-nowrap"
+                className="text-xs py-0.5 px-2.5 whitespace-nowrap"
               >
                 {status === 'joining' && (
-                  <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                 )}
                 {statusMeta.label}
               </Badge>
 
-              {iceMode === 'stun-only' && (
+              {process.env.NODE_ENV === 'development' && iceMode === 'stun-only' && (
                 <span
-                  className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-[#292214] border border-[#E9B872]/30 text-[#F0C987]"
-                  title="STUN-only dev mode: configure Cloudflare TURN env vars for production mobile/NAT networks"
+                  className="text-xs font-mono px-2 py-0.5 rounded-md bg-[#292214] border border-[#E9B872]/30 text-[#F0C987]"
+                  title="STUN-only Dev"
                 >
                   STUN-only Dev
                 </span>
@@ -300,12 +292,12 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   size="sm"
                   onClick={onToggleMute}
                   disabled={isBusy}
-                  className="h-7 px-2.5 text-[11px] rounded-full"
+                  className="h-8 sm:h-7 px-3 text-xs rounded-full"
                   leftIcon={
                     isMuted ? (
-                      <MicOff className="w-3 h-3" />
+                      <MicOff className="w-3.5 h-3.5" />
                     ) : (
-                      <Mic className="w-3 h-3 text-[#7AD3A8]" />
+                      <Mic className="w-3.5 h-3.5 text-[#7AD3A8]" />
                     )
                   }
                   aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
@@ -320,8 +312,8 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                 onClick={onLeave}
                 isLoading={isLeaving}
                 disabled={isJoining || isLeaving}
-                className="h-7 px-2.5 text-[11px] rounded-full"
-                leftIcon={<PhoneOff className="w-3 h-3" />}
+                className="h-8 sm:h-7 px-3 text-xs rounded-full"
+                leftIcon={<PhoneOff className="w-3.5 h-3.5" />}
                 title={isHost ? 'End voice call for everyone' : 'Leave voice call'}
                 aria-label={isHost ? 'End voice call for everyone' : 'Leave voice call'}
               >
@@ -330,49 +322,68 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
             </div>
           </div>
 
-          {/* Participant Chips with Live Speaking Rings */}
+          {/* Participant Chips with Clear Speaking, Listening, and Muted States */}
           {participants.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               {participants.map((participant) => {
                 const initial = (participant.username || '?').trim().charAt(0).toUpperCase();
+                const isSpeaking = !participant.isMuted && participant.isSpeaking;
+                const isListening = !participant.isMuted && !participant.isSpeaking;
+                const isMuted = participant.isMuted;
+
                 return (
                   <div
                     key={participant.userId}
                     className={cn(
                       'flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs transition-all duration-150 min-w-0 max-w-full',
-                      participant.isSpeaking
-                        ? 'bg-[#173D30] border-[#7AD3A8]/65 shadow-[0_0_12px_rgba(122,211,168,0.22)]'
+                      isSpeaking
+                        ? 'bg-[#173D30] border-[#7AD3A8]/70 shadow-[0_0_12px_rgba(122,211,168,0.25)] ring-1 ring-[#7AD3A8]/40'
+                        : isMuted
+                        ? 'bg-[#2A1615]/80 border-[#F87171]/25 text-[#FCA5A5]'
                         : 'bg-[#0E281F]/90 border-[#E8DDC5]/14'
                     )}
                   >
                     <span
                       className={cn(
-                        'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 transition-shadow',
-                        participant.isSpeaking
-                          ? 'bg-[#7AD3A8] text-[#091B15] ring-2 ring-[#7AD3A8]/45'
+                        'w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-all',
+                        isSpeaking
+                          ? 'bg-[#7AD3A8] text-[#091B15] ring-2 ring-[#7AD3A8]/50 animate-pulse'
+                          : isMuted
+                          ? 'bg-[#4B2623] text-[#FCA5A5]'
                           : 'bg-[#1E4D3C] text-[#E8DDC5]'
                       )}
                     >
                       {initial}
                     </span>
-                    <span className="truncate text-[11px] font-medium text-[#F7F4EC] max-w-[110px]">
+                    <span className="truncate text-xs font-medium text-[#F7F4EC] max-w-[110px]">
                       {participant.isLocal ? 'You' : participant.username}
                     </span>
-                    {participant.isMuted ? (
-                      <MicOff
-                        className="w-3 h-3 text-[#E87A70] shrink-0"
-                        aria-label="Microphone muted"
-                      />
-                    ) : participant.isSpeaking ? (
-                      <span
-                        className="flex items-end gap-0.5 h-2.5 shrink-0"
-                        aria-label="Speaking"
-                      >
-                        <span className="w-0.5 h-1.5 bg-[#7AD3A8] rounded-full animate-pulse" />
-                        <span className="w-0.5 h-2.5 bg-[#7AD3A8] rounded-full animate-pulse" />
-                        <span className="w-0.5 h-1 bg-[#7AD3A8] rounded-full animate-pulse" />
+
+                    {/* State badge / indicator */}
+                    {isSpeaking && (
+                      <span className="flex items-center gap-1 text-[10px] font-mono font-medium text-[#7AD3A8] shrink-0">
+                        <span className="flex items-end gap-0.5 h-2.5">
+                          <span className="w-0.5 h-1.5 bg-[#7AD3A8] rounded-full animate-pulse" />
+                          <span className="w-0.5 h-2.5 bg-[#7AD3A8] rounded-full animate-pulse" />
+                          <span className="w-0.5 h-1 bg-[#7AD3A8] rounded-full animate-pulse" />
+                        </span>
+                        <span>Speaking</span>
                       </span>
-                    ) : null}
+                    )}
+
+                    {isListening && (
+                      <span className="flex items-center gap-1 text-[10px] font-mono text-[#CDBF9F]/70 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8]/60" />
+                        <span>Listening</span>
+                      </span>
+                    )}
+
+                    {isMuted && (
+                      <span className="flex items-center gap-1 text-[10px] font-mono text-[#F87171] shrink-0">
+                        <MicOff className="w-3 h-3 text-[#F87171]" />
+                        <span>Muted</span>
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -387,7 +398,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
               onClick={() => void handleUnlockAudio()}
               isLoading={isUnlockingAudio}
               disabled={isBusy}
-              className="w-full h-7 text-[11px] rounded-lg"
+              className="w-full h-8 text-xs rounded-lg"
               leftIcon={<Volume2 className="w-3.5 h-3.5" />}
             >
               {isUnlockingAudio ? 'Enabling audio…' : 'Tap to enable partner audio'}
@@ -396,10 +407,10 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
 
           {/* Subtle Headphones Echo Tip & Auto-Duck Toggle */}
           {isInCall && (variant === 'sidebar' || onToggleAutoDuck) && (
-            <div className="flex items-center justify-between gap-2 text-[10px] text-[#CDBF9F]/70 pt-0.5 flex-wrap">
+            <div className="flex items-center justify-between gap-2 text-xs text-[#CDBF9F]/80 pt-0.5 flex-wrap">
               {variant === 'sidebar' && status === 'connected' && !hideHeadphoneTip ? (
                 <span className="flex items-center gap-1.5 truncate min-w-0">
-                  <Headphones className="w-3 h-3 text-[#9670FF] shrink-0" />
+                  <Headphones className="w-3.5 h-3.5 text-[#9670FF] shrink-0" />
                   <span className="truncate">Use headphones to prevent movie echo</span>
                   <button
                     type="button"
@@ -407,7 +418,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                     className="text-[#CDBF9F]/55 hover:text-[#F7F4EC] cursor-pointer shrink-0"
                     aria-label="Dismiss headphones tip"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </span>
               ) : (
@@ -419,14 +430,14 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   type="button"
                   onClick={onToggleAutoDuck}
                   className={cn(
-                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-mono transition-colors cursor-pointer shrink-0',
+                    'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-mono transition-colors cursor-pointer shrink-0',
                     autoDuckEnabled
                       ? 'bg-[#9670FF]/18 border-[#9670FF]/45 text-[#E8DDC5]'
                       : 'bg-[#0E281F] border-[#E8DDC5]/16 text-[#CDBF9F]/70 hover:text-[#F7F4EC]'
                   )}
                   title="Automatically lower video volume while on voice call"
                 >
-                  <Volume2 className="w-2.5 h-2.5 text-[#9670FF]" />
+                  <Volume2 className="w-3 h-3 text-[#9670FF]" />
                   <span>{autoDuckEnabled ? 'Auto-duck: On' : 'Auto-duck: Off'}</span>
                 </button>
               )}

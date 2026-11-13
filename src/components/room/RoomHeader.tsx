@@ -366,17 +366,17 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       )}
 
       {/* Sleek Mobile Room Bar (single uncluttered luxury row) */}
-      <div className="flex md:hidden items-center justify-between gap-2.5 px-3 py-2 min-h-[54px]">
-        {/* Editorial Room Title & Quiet Copy/Live Metadata Subline */}
+      <div className="flex md:hidden items-center justify-between gap-2 px-3 py-2 min-h-[54px]">
+        {/* Editorial Room Title & Clear Room Code Copy */}
         <div className="min-w-0 flex-1">
-          <h1 className="font-serif text-[17px] font-semibold tracking-tight text-[#F7F4EC] leading-tight truncate">
+          <h1 className="font-serif text-base sm:text-lg font-semibold tracking-tight text-[#F7F4EC] leading-tight truncate">
             {room.title}
           </h1>
-          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] font-mono text-[#CDBF9F] min-w-0">
+          <div className="flex items-center gap-2 mt-0.5 text-xs font-mono text-[#CDBF9F] min-w-0">
             <button
               type="button"
               onClick={() => void handleCopyLink()}
-              className="inline-flex items-center gap-1 text-[#E8DDC5]/90 hover:text-[#F7F4EC] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              className="inline-flex items-center gap-1 text-[#E8DDC5] hover:text-[#F7F4EC] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               title="Copy room invitation link"
               aria-label="Copy room code and invitation link"
             >
@@ -384,43 +384,37 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                 {copied ? 'Copied' : room.code}
               </span>
               {copied ? (
-                <Check className="w-3 h-3 text-[#7AD3A8]" />
+                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
               ) : (
-                <Copy className="w-2.5 h-2.5 text-[#CDBF9F]/70" />
+                <Copy className="w-3 h-3 text-[#CDBF9F]/70" />
               )}
-            </button>
-
-            <span className="text-[#E8DDC5]/25 shrink-0">·</span>
-
-            <button
-              type="button"
-              onClick={onOpenParticipants || (() => void handleShareInvite())}
-              className="inline-flex items-center gap-1.5 min-w-0 hover:text-[#F7F4EC] transition-colors cursor-pointer"
-              title="View room members & permissions"
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  others.length > 0 ? 'bg-[#7AD3A8]' : 'bg-[#E9B872]'
-                }`}
-              />
-              <span className="truncate">
-                {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}
-                {others.length > 0
-                  ? ` · ${others[0]?.username}${others.length > 1 ? ` +${others.length - 1}` : ''}`
-                  : ' online'}
-              </span>
             </button>
           </div>
         </div>
 
         {/* Essential Mobile Actions + Refined Overflow Menu */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Members & Co-Host Trigger */}
+          <button
+            type="button"
+            onClick={onOpenParticipants || (() => void handleShareInvite())}
+            className="h-8 px-2.5 rounded-full border border-[#E8DDC5]/20 bg-[#173D30] hover:bg-[#1E4B3C] text-xs font-medium text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+            title="View room joiners, promote co-host, and manage permissions"
+            aria-label="View room members and permissions"
+          >
+            <Users className="w-3.5 h-3.5 text-[#9670FF]" />
+            <span>
+              {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}
+            </span>
+          </button>
+
+          {/* Media / Video Upload Button */}
           {(canControl ?? isHost) ? (
             <Button
               variant="primary"
               size="sm"
               onClick={onChangeVideoClick}
-              className="h-8 text-[11px] px-2.5 rounded-full"
+              className="h-8 text-xs px-2.5 rounded-full whitespace-nowrap"
               leftIcon={<Film className="w-3.5 h-3.5" />}
               title="Load YouTube link, video URL, or upload a movie file to watch together"
               aria-label="Load watch media or upload video"
@@ -431,14 +425,14 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             <button
               type="button"
               onClick={() => void handleShareInvite()}
-              className="h-8 px-2.5 rounded-full border border-[#E8DDC5]/22 bg-[#173D30] hover:bg-[#1E4B3C] text-[11px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center gap-1 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              className="h-8 px-2.5 rounded-full border border-[#E8DDC5]/22 bg-[#173D30] hover:bg-[#1E4B3C] text-xs font-medium text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center gap-1 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               title="Share or copy room invite link"
               aria-label="Share or copy room invite link"
             >
               {copied ? (
-                <Check className="w-3 h-3 text-[#7AD3A8]" />
+                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
               ) : (
-                <Share2 className="w-3 h-3 text-[#9670FF]" />
+                <Share2 className="w-3.5 h-3.5 text-[#9670FF]" />
               )}
               <span>{copied ? 'Copied' : 'Invite'}</span>
             </button>
@@ -466,7 +460,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             {isMobileMenuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+8px)] w-60 rounded-2xl border border-[#E8DDC5]/18 bg-[#0E281F]/98 shadow-2xl backdrop-blur-md p-1.5 z-50"
+                className="absolute right-0 top-[calc(100%+8px)] w-64 rounded-2xl border border-[#E8DDC5]/18 bg-[#0E281F]/98 shadow-2xl backdrop-blur-md p-1.5 z-50"
               >
                 <button
                   type="button"
@@ -475,7 +469,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     void handleShareInvite();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
                 >
                   <span className="flex items-center gap-2.5">
                     {copied ? (
@@ -485,7 +479,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     )}
                     <span>{copied ? 'Invite Link Copied' : 'Share Invite Link'}</span>
                   </span>
-                  <span className="text-[10px] font-mono text-[#CDBF9F]/70">
+                  <span className="text-xs font-mono text-[#CDBF9F]/70">
                     {room.code}
                   </span>
                 </button>
@@ -498,15 +492,30 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                       setIsMobileMenuOpen(false);
                       onOpenParticipants();
                     }}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
                   >
                     <span className="flex items-center gap-2.5">
                       <Users className="w-4 h-4 text-[#9670FF] shrink-0" />
                       <span>Members &amp; Permissions</span>
                     </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/15 text-[#CDBF9F]">
+                    <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/15 text-[#CDBF9F]">
                       {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}
                     </span>
+                  </button>
+                )}
+
+                {(canControl ?? isHost) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      onChangeVideoClick();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
+                  >
+                    <Film className="w-4 h-4 text-[#9670FF] shrink-0" />
+                    <span>Change / Upload Video</span>
                   </button>
                 )}
 
@@ -519,7 +528,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                       void handleToggleFavorite();
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left disabled:opacity-50"
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left disabled:opacity-50"
                   >
                     {isFavLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin text-[#E9B872] shrink-0" />
@@ -544,7 +553,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     setIsMobileMenuOpen(false);
                     void handleLeaveRoom();
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs text-[#F2B8B2] hover:bg-[#3A1E1C]/70 transition-colors cursor-pointer text-left disabled:opacity-50"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[#F2B8B2] hover:bg-[#3A1E1C]/70 transition-colors cursor-pointer text-left disabled:opacity-50"
                 >
                   {isLeavingRoom ? (
                     <Loader2 className="w-4 h-4 animate-spin shrink-0" />
@@ -589,22 +598,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               )}
             </button>
           </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void handleCopyLink()}
-            className="h-8 text-xs rounded-full inline-flex"
-            leftIcon={
-              copied ? (
-                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )
-            }
-          >
-            {copied ? 'Copied' : 'Copy Invite'}
-          </Button>
 
           {/* Favorite Video Toggle */}
           {room.videoUrl && isAuthenticated && (
@@ -663,20 +656,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               >
                 {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} Online · {otherNames}
               </Badge>
-            </button>
-          )}
-
-          {/* Members / Permissions Trigger */}
-          {onOpenParticipants && (
-            <button
-              type="button"
-              onClick={onOpenParticipants}
-              className="h-8 px-2.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/18 text-[#CDBF9F] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/35 text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-              title="Room Members & Permissions"
-              aria-label="Room Members and Permissions"
-            >
-              <Users className="w-3.5 h-3.5 text-[#9670FF]" />
-              <span className="hidden xl:inline">Members</span>
             </button>
           )}
 

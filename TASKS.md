@@ -212,3 +212,37 @@
 - [x] Parallelize room initialization, Realtime JWT pre-warm, and eager chat-history loading where RLS permits (`src/app/room/[code]/page.tsx`, `src/hooks/useRoom.ts`, `src/components/room/RoomView.tsx`, `src/components/chat/ChatContainer.tsx`, `src/hooks/useChat.ts`).
 - [x] Add regression tests (`tests/initial-loading.test.mjs`), run benchmark measurements, and verify TypeScript, ESLint, security tests, full test suite, and production build.
 
+---
+
+## Phase 14 — Mobile & Small Screen Usability Optimization ✅
+- [x] Unblock Joiners / Co-Host management and Video Upload on mobile: added a dedicated Mobile Quick Action Strip under the video player (`Joiners (N/4)`, `Upload / URL`, and Voice quick controls in `RoomView.tsx`), upgraded `RoomHeader.tsx` mobile bar to provide a dedicated, untruncated `[👥 N/4]` Members & Permissions trigger alongside `[🎬 Media]`, and made telemetry strip areas clickable to trigger the respective modals directly.
+- [x] Prevent Voice Call UI from pushing chat off-screen and breaking on mobile: removed the blocking 118px `VoiceCallBar variant="banner"` above the video on mobile (`lg:hidden`), replaced with a non-intrusive 28px active voice ribbon under the video and compact header controls, and added non-blocking single-line notices for browser autoplay audio unlock and transient call errors.
+- [x] Prevent mobile viewport distortion and auto-zoom when tapping chat: upgraded `<input>` elements in `ChatContainer.tsx` and `Input.tsx` to `text-base sm:text-sm` (16px on mobile stops iOS Safari and Android Chrome from auto-zooming the viewport), added `viewport` metadata with `interactiveWidget: 'resizes-content'` in `src/app/layout.tsx`, and anchored chat inputs with safe-area padding (`env(safe-area-inset-bottom)`).
+- [x] Eliminate tiny fonts across mobile: increased message bubble text from 12px to 14px (`text-sm sm:text-xs`), sender names from 10px to 12px (`text-xs sm:text-[11px]`), timestamps and status badges from 9px/10px to 11px/12px, quick reaction emojis to comfortable 38×38px touch targets, and revealed explicit "Make Co-Host" / "Demote" and "Kick" button labels in `RoomParticipantsModal.tsx` on mobile.
+- [x] Verified full regression suite (`86/86` tests passing), `tsc --noEmit` (0 errors), `npm run lint` (0 errors, 0 warnings), and production build (`npm run build`).
+
+---
+
+## Phase 15 — Watch Party Experience Refinement ✅
+- [x] **Voice Calls**:
+  - Distinguish Speaking (emerald pulsing ring, 3-bar animated equalizer, "Speaking" badge), Listening (calm green dot, "Listening" text), and Muted (mic-off badge, "Muted" text) states in `VoiceCallBar.tsx`.
+  - Update states in real time using `AudioLevelMonitor` and peer mute signaling.
+  - Replaced technical connection labels (`Live · STUN`, `Live · Relayed`, `Live · P2P`) with clean "Voice Connected" badge.
+  - Sanitized voice call errors (`useCall.ts`, `PeerConnectionManager.ts`) so internal details (STUN, TURN, WebRTC, ICE, SDP) remain in developer logs while users see friendly messages ("Couldn't connect to voice call. Please try again.").
+- [x] **Chat**:
+  - Implemented `CHAT_SEEN` broadcast protocol across `roomRealtimeBus.ts`, `useRoom.ts`, and `useChat.ts`.
+  - Added visual delivery and read receipts to user's own messages: `Sending...` -> `✓ Sent` -> `✓✓ Seen`.
+  - Eliminated rapid 20ms flickering by enforcing a smooth >=500ms holding transition for `status === 'sending'`.
+  - Upgraded chat panel color theme to `#0B1E17` for crisp contrast with message bubbles.
+  - Scoped chat history to each member's `joinedAt`: late joiners only see messages from when they joined (DB query in `roomService.getChatMessages` + client-side filter in `useChat`), while existing participants keep the full conversation.
+- [x] **Duplicate Removal & Unified Controls**:
+  - Removed duplicate `Copy Invite` button in desktop header (room code pill serves as the primary copy trigger).
+  - Removed duplicate `Members` button in desktop header (the online members badge opens `RoomParticipantsModal`).
+  - Removed duplicate `Change Video` button inside `UniversalPlayer.tsx` top overlay.
+  - Removed redundant quick action strip and duplicate participant count under video in `RoomView.tsx`.
+  - Disabled Next.js dev indicator overlay (`devIndicators: false` in `next.config.ts`) to prevent UI collision with the message input.
+- [x] **Mobile & Desktop Layout**:
+  - Balanced theater split: video centerpiece with high visibility on mobile and desktop.
+  - Clean screening telemetry bar under video showing source status (`YouTube · Synced`).
+  - Verified with `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors, 0 warnings), full test suite (`86/86` tests passing), and production build (`npm run build`).
+

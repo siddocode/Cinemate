@@ -16,6 +16,14 @@ export interface RealtimeTypingPayload {
   isTyping: boolean;
 }
 
+export interface RealtimeChatSeenPayload {
+  roomId: string;
+  userId: string;
+  username: string;
+  lastSeenMessageId: string;
+  seenAt: string;
+}
+
 export interface RealtimeCallSlotRow {
   room_id: string;
   user_id: string;
@@ -32,11 +40,13 @@ export interface RealtimeCallSlotChange {
 
 type ChatMessageListener = (row: RealtimeChatMessageRow) => void;
 type ChatBroadcastListener = (payload: ChatBroadcastPayload) => void;
+type ChatSeenListener = (payload: RealtimeChatSeenPayload) => void;
 type TypingListener = (payload: RealtimeTypingPayload) => void;
 type CallSlotListener = (change: RealtimeCallSlotChange) => void;
 
 const chatMessageListeners = new Map<string, Set<ChatMessageListener>>();
 const chatBroadcastListeners = new Map<string, Set<ChatBroadcastListener>>();
+const chatSeenListeners = new Map<string, Set<ChatSeenListener>>();
 const typingListeners = new Map<string, Set<TypingListener>>();
 const callSlotListeners = new Map<string, Set<CallSlotListener>>();
 const attachedTypingChannels = new WeakSet<RealtimeChannel>();
@@ -74,6 +84,43 @@ export function emitRoomChatBroadcast(
   payload: ChatBroadcastPayload
 ): void {
   const listeners = chatBroadcastListeners.get(roomId);
+  if (!listeners) return;
+  listeners.forEach((listener) => listener(payload));
+}
+
+/**
+ * Registers a listener for `CHAT_SEEN` read-receipt events received via the unified room channel.
+ */
+export function subscribeToRoomChatSeen(
+  roomId: string,
+  listener: ChatSeenListener
+): () => void {
+  let set = chatSeenListeners.get(roomId);
+  if (!set) {
+    set = new Set();
+    chatSeenListeners.set(roomId, set);
+  }
+  set.add(listener);
+
+  return () => {
+    const current = chatSeenListeners.get(roomId);
+    if (current) {
+      current.delete(listener);
+      if (current.size === 0) {
+        chatSeenListeners.delete(roomId);
+      }
+    }
+  };
+}
+
+/**
+ * Dispatches a `CHAT_SEEN` broadcast payload from the unified room channel to listeners.
+ */
+export function emitRoomChatSeen(
+  roomId: string,
+  payload: RealtimeChatSeenPayload
+): void {
+  const listeners = chatSeenListeners.get(roomId);
   if (!listeners) return;
   listeners.forEach((listener) => listener(payload));
 }

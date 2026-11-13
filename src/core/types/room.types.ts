@@ -40,7 +40,7 @@ export interface RoomMember {
   lastSeenAt: string;
 }
 
-export type ChatMessageStatus = 'sending' | 'sent' | 'failed';
+export type ChatMessageStatus = 'sending' | 'sent' | 'seen' | 'failed';
 
 export interface ChatMessage {
   id: string;
@@ -51,6 +51,7 @@ export interface ChatMessage {
   type: 'chat' | 'system';
   createdAt: string;
   status?: ChatMessageStatus;
+  seenBy?: string[];
   errorMessage?: string;
 }
 

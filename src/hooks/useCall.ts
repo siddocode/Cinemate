@@ -931,7 +931,7 @@ export function useCall({
     if (!isSupabaseConfigured()) {
       setError({
         code: 'SIGNALING_ERROR',
-        message: 'Voice calling requires Supabase Auth and Realtime configuration.',
+        message: 'Voice calling is temporarily unavailable. Please try again.',
       });
       return;
     }
@@ -943,7 +943,7 @@ export function useCall({
     ) {
       setError({
         code: 'UNSUPPORTED_BROWSER',
-        message: 'Your browser does not support WebRTC voice calling.',
+        message: 'Voice calling is not supported in this browser. Please try another browser.',
       });
       return;
     }
@@ -1078,7 +1078,11 @@ export function useCall({
         },
         onError: (msg) => {
           if (!isInCallRef.current) return;
-          setError({ code: 'SIGNALING_ERROR', message: msg });
+          console.warn('[Syncora] Voice signaling error:', msg);
+          setError({
+            code: 'SIGNALING_ERROR',
+            message: "Couldn't connect to voice call. Please try again.",
+          });
         },
       });
       signalingRef.current = signaling;
@@ -1102,7 +1106,7 @@ export function useCall({
                 notifyServer: false,
                 nextError: {
                   code: 'SIGNALING_ERROR',
-                  message: 'Your voice call slot expired. Please rejoin.',
+                  message: 'Voice call timed out. Please rejoin the call.',
                 },
               });
             }
@@ -1111,6 +1115,7 @@ export function useCall({
 
       scheduleTurnRefresh(roomId, iceConfig);
     } catch (err) {
+      console.warn('[Syncora] Failed to start voice call:', err);
       stopMediaStream(micStream);
       if (joinedSlot) {
         try {
@@ -1123,7 +1128,7 @@ export function useCall({
         notifyServer: false,
         nextError: {
           code: 'ICE_CONFIG_ERROR',
-          message: err instanceof Error ? err.message : 'Unable to start voice call.',
+          message: "Couldn't connect to voice call. Please try again.",
         },
       });
     }

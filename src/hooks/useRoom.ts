@@ -25,8 +25,10 @@ import {
   emitRoomCallSlotChange,
   emitRoomChatBroadcast,
   emitRoomChatInsert,
+  emitRoomChatSeen,
   RealtimeCallSlotRow,
   RealtimeChatMessageRow,
+  RealtimeChatSeenPayload,
 } from '@/lib/supabase/roomRealtimeBus';
 import { isValidChatBroadcastPayload } from '@/lib/utils/chat';
 
@@ -174,8 +176,13 @@ export function useRoom(
         }
 
         const resolvedRoom = sessionRes.room;
+        const selfMembership = sessionRes.members.find(
+          (member) => member.userId === currentUser.id
+        );
 
-        // Start chat history fetch immediately in parallel with Realtime subscribe & player mount
+        // Start chat history fetch immediately in parallel with Realtime subscribe & player mount.
+        // Only fetch messages sent since this viewer joined so late joiners never see
+        // the prior conversation between participants who were already here.
         setInitialChatHistory({
           roomId: resolvedRoom.id,
           messages: [],
@@ -183,7 +190,7 @@ export function useRoom(
           loaded: false,
         });
         void roomService
-          .getChatMessages(resolvedRoom.id)
+          .getChatMessages(resolvedRoom.id, selfMembership?.joinedAt)
           .then((history: ChatMessage[]) => {
             if (!isMounted) return;
             setInitialChatHistory({
@@ -409,6 +416,16 @@ export function useRoom(
         (msg: { payload?: unknown }) => {
           if (isValidChatBroadcastPayload(msg?.payload, currentRoomId)) {
             emitRoomChatBroadcast(currentRoomId, msg.payload);
+          }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'CHAT_SEEN' },
+        (msg: { payload?: unknown }) => {
+          const payload = msg?.payload as RealtimeChatSeenPayload | undefined;
+          if (payload && payload.roomId === currentRoomId) {
+            emitRoomChatSeen(currentRoomId, payload);
           }
         }
       )

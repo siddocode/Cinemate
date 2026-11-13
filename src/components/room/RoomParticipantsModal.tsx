@@ -324,25 +324,25 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {isRoomHost ? (
-                          <Badge variant="purple" dot className="text-[9px] py-0 px-1.5">
-                            <Crown className="w-2.5 h-2.5 mr-0.5" />
+                          <Badge variant="purple" dot className="text-[10px] sm:text-[11px] py-0 px-2">
+                            <Crown className="w-3 h-3 mr-0.5" />
                             Host
                           </Badge>
                         ) : isCoHost ? (
-                          <Badge variant="success" dot className="text-[9px] py-0 px-1.5">
-                            <ShieldCheck className="w-2.5 h-2.5 mr-0.5" />
+                          <Badge variant="success" dot className="text-[10px] sm:text-[11px] py-0 px-2">
+                            <ShieldCheck className="w-3 h-3 mr-0.5" />
                             Co-Host
                           </Badge>
                         ) : isRestrictedViewer ? (
-                          <Badge variant="warning" className="text-[9px] py-0 px-1.5">
-                            View-Only (Previously Kicked)
+                          <Badge variant="warning" className="text-[10px] sm:text-[11px] py-0 px-2">
+                            View-Only
                           </Badge>
                         ) : (
-                          <Badge variant="default" className="text-[9px] py-0 px-1.5 text-[#CDBF9F]">
+                          <Badge variant="default" className="text-[10px] sm:text-[11px] py-0 px-2 text-[#CDBF9F]">
                             Viewer
                           </Badge>
                         )}
-                        <span className="text-[10px] text-[#CDBF9F]/60">
+                        <span className="text-[11px] text-[#CDBF9F]/70">
                           {isOnline ? 'Connected' : 'Offline'}
                         </span>
                       </div>
@@ -353,23 +353,23 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                   {isHost && !isSelf && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       {isConfirmingKick ? (
-                        <div className="flex items-center gap-1 bg-[#2A1215] border border-[#DC2626]/40 rounded-lg p-1">
-                          <span className="text-[10px] text-[#FCA5A5] px-1 hidden sm:inline">
+                        <div className="flex items-center gap-1.5 bg-[#2A1215] border border-[#DC2626]/40 rounded-lg p-1">
+                          <span className="text-xs text-[#FCA5A5] px-1 hidden sm:inline">
                             Kick?
                           </span>
                           <button
                             type="button"
                             disabled={isBusy}
                             onClick={() => handleKick(member.userId)}
-                            className="px-2 py-1 rounded bg-[#DC2626] hover:bg-[#B91C1C] text-[#F7F4EC] text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                            className="px-2.5 py-1 rounded bg-[#DC2626] hover:bg-[#B91C1C] text-[#F7F4EC] text-xs font-semibold cursor-pointer disabled:opacity-50"
                           >
-                            {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Yes, Kick'}
+                            {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Yes, Kick'}
                           </button>
                           <button
                             type="button"
                             disabled={isBusy}
                             onClick={() => setConfirmKickId(null)}
-                            className="px-1.5 py-1 text-[#CDBF9F] hover:text-[#F7F4EC] text-[10px] cursor-pointer"
+                            className="px-2 py-1 text-[#CDBF9F] hover:text-[#F7F4EC] text-xs cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -383,18 +383,18 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                               size="sm"
                               disabled={isBusy}
                               onClick={() => handleRoleChange(member.userId, member.role)}
-                              className="h-7 text-[11px] px-2 rounded-lg text-[#CDBF9F] hover:text-[#F7F4EC]"
+                              className="h-8 text-xs px-2.5 rounded-lg text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#173D30]/60 hover:bg-[#1E4B3C]"
                               leftIcon={
                                 isBusy && actionLoadingId === `role-${member.userId}` ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 ) : isCoHost ? (
-                                  <Shield className="w-3 h-3" />
+                                  <Shield className="w-3.5 h-3.5" />
                                 ) : (
-                                  <ShieldCheck className="w-3 h-3 text-[#9670FF]" />
+                                  <ShieldCheck className="w-3.5 h-3.5 text-[#9670FF]" />
                                 )
                               }
                             >
-                              <span className="hidden sm:inline">
+                              <span>
                                 {isCoHost ? 'Demote' : 'Make Co-Host'}
                               </span>
                             </Button>
@@ -406,11 +406,11 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             size="sm"
                             disabled={isBusy}
                             onClick={() => setConfirmKickId(member.userId)}
-                            className="h-7 text-[11px] px-2 rounded-lg text-[#E87A70] hover:text-[#FF8E85] hover:bg-[#DC2626]/10"
-                            leftIcon={<UserX className="w-3 h-3 text-[#E87A70]" />}
+                            className="h-8 text-xs px-2.5 rounded-lg text-[#E87A70] hover:text-[#FF8E85] hover:bg-[#DC2626]/10"
+                            leftIcon={<UserX className="w-3.5 h-3.5 text-[#E87A70]" />}
                             title="Remove participant from room"
                           >
-                            <span className="hidden sm:inline">Kick</span>
+                            <span>Kick</span>
                           </Button>
                         </>
                       )}

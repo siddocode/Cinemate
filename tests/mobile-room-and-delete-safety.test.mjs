@@ -233,6 +233,29 @@ describe('Mobile share, clipboard fallback & safe delete event handling', () => 
     assert.match(navbarSrc, /h-14 sm:h-16/);
     assert.match(navbarSrc, /isRoomRoute \? 'hidden sm:inline-flex' : 'inline-flex'/);
     assert.match(roomViewSrc, /h-\[calc\(100dvh-3\.5rem\)\] sm:h-\[calc\(100dvh-4rem\)\]/);
+
+    // Mobile quick action strip under video provides direct 1-tap access to Joiners and Upload/URL
+    assert.match(roomViewSrc, /Joiners/);
+    assert.match(roomViewSrc, /Upload \/ URL/);
+
+    // ChatContainer input uses 16px (text-base) on mobile to prevent browser auto-zoom, and safe-area padding
+    const chatSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/chat/ChatContainer.tsx'),
+      'utf8'
+    );
+    assert.match(chatSrc, /text-base sm:text-sm/);
+    assert.match(chatSrc, /env\(safe-area-inset-bottom\)/);
+
+    // RoomParticipantsModal reveals Co-Host and Kick labels cleanly on mobile without hidden sm:inline
+    assert.match(participantsSrc, /<span>\s*\{\s*isCoHost\s*\?\s*'Demote'\s*:\s*'Make Co-Host'\s*\}\s*<\/span>/);
+    assert.match(participantsSrc, /<span>Kick<\/span>/);
+
+    // Root layout includes interactiveWidget: resizes-content in viewport meta
+    const layoutSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/layout.tsx'),
+      'utf8'
+    );
+    assert.match(layoutSrc, /interactiveWidget:\s*'resizes-content'/);
   });
 
   it('resolveLoadingStage adapts spinner and loading page messages for normal vs slow networks', () => {

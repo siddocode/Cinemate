@@ -12,7 +12,6 @@ import {
   RotateCcw,
   Film,
   Loader2,
-  Tv,
 } from 'lucide-react';
 import { IVideoPlayerAdapter, VideoSourceType } from '@/core/types/player.types';
 import { YouTubePlayerAdapter } from '@/core/adapters/YouTubePlayerAdapter';
@@ -59,7 +58,6 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   initialPlayback,
   onPersistSnapshot,
   onVideoMismatch,
-  onChangeVideoClick,
   isInVoiceCall = false,
   isVoiceAutoDuckEnabled = true,
   isVoiceSpeaking = false,
@@ -406,7 +404,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
             <Badge
               variant="purple"
               dot
-              className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC] text-[10px] sm:text-[11px]"
+              className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC] text-xs sm:text-[11px]"
             >
               {isHost
                 ? 'Host Authority'
@@ -417,7 +415,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
 
             <Badge
               variant="default"
-              className="bg-[#0E281F]/88 border-[#E8DDC5]/20 text-[#CDBF9F] text-[10px] sm:text-[11px] hidden sm:inline-flex gap-1"
+              className="bg-[#0E281F]/88 border-[#E8DDC5]/20 text-[#CDBF9F] text-xs sm:text-[11px] hidden sm:inline-flex gap-1"
             >
               <Film className="w-3 h-3 text-[#E8DDC5]" />
               {videoType === 'youtube' ? 'YouTube' : 'Personal Stream'}
@@ -427,7 +425,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
               <Badge
                 variant={isSynced ? 'success' : 'warning'}
                 dot
-                className="text-[10px] sm:text-[11px]"
+                className="text-xs sm:text-[11px]"
               >
                 {isSynced ? 'In Sync' : `Drift ${driftSeconds.toFixed(1)}s`}
               </Badge>
@@ -435,27 +433,14 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {hasControl && onChangeVideoClick && (
-              <button
-                type="button"
-                onClick={onChangeVideoClick}
-                className="flex items-center gap-1.5 text-[11px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
-                title="Change video source or upload"
-              >
-                <Tv className="w-3 h-3 text-[#9670FF]" />
-                <span className="hidden sm:inline">Change Video</span>
-                <span className="sm:hidden">Video</span>
-              </button>
-            )}
-
             {!isHost && (
               <button
                 type="button"
                 onClick={requestSync}
-                className="flex items-center gap-1.5 text-[11px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 text-xs font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
                 title="Resync video with host"
               >
-                <RotateCcw className="w-3 h-3 text-[#9670FF]" />
+                <RotateCcw className="w-3.5 h-3.5 text-[#9670FF]" />
                 <span>Resync</span>
               </button>
             )}
@@ -527,7 +512,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
                 )}
               </button>
 
-              <div className="font-mono text-[11px] sm:text-xs tabular-nums text-[#E8DDC5]">
+              <div className="font-mono text-xs tabular-nums text-[#E8DDC5]">
                 <span>{formatTime(currentTime)}</span>
                 <span className="text-[#CDBF9F]/45 mx-1.5">/</span>
                 <span className="text-[#CDBF9F]">{formatTime(duration)}</span>

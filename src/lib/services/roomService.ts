@@ -874,19 +874,27 @@ export const roomService = {
   },
 
   /**
-   * Fetches chat history for a room.
+   * Fetches chat history for a room, optionally only messages sent since the
+   * viewer joined so newly arriving participants never see prior conversation.
    */
-  async getChatMessages(roomId: string): Promise<ChatMessage[]> {
+  async getChatMessages(roomId: string, sinceCreatedAt?: string): Promise<ChatMessage[]> {
     if (!isSupabaseConfigured()) {
-      return devMessages.get(roomId) || [];
+      const localMessages = devMessages.get(roomId) || [];
+      return sinceCreatedAt
+        ? localMessages.filter((msg) => msg.createdAt >= sinceCreatedAt)
+        : localMessages;
     }
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase
+      const baseQuery = supabase
         .from('chat_messages')
         .select('*, profiles(username)')
-        .eq('room_id', roomId)
+        .eq('room_id', roomId);
+      const filteredQuery = sinceCreatedAt
+        ? baseQuery.gte('created_at', sinceCreatedAt)
+        : baseQuery;
+      const { data, error } = await filteredQuery
         .order('created_at', { ascending: true })
         .limit(100);
 

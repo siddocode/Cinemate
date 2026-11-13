@@ -167,11 +167,12 @@ export class PeerConnectionManager {
         if (localSdp) {
           this.callbacks.onOffer({ type: 'offer', sdp: localSdp });
         }
-      } catch {
+      } catch (err) {
         if (!this.isDestroyed) {
+          console.warn('[PeerConnectionManager] Failed to create voice call offer:', err);
           this.callbacks.onError?.({
             code: 'SIGNALING_ERROR',
-            message: 'Failed to create voice call offer.',
+            message: "Couldn't connect to voice call. Please try again.",
           });
         }
       } finally {
@@ -397,7 +398,7 @@ export class PeerConnectionManager {
         console.warn('[PeerConnectionManager] Failed to process partner voice offer:', err);
         this.callbacks.onError?.({
           code: 'SIGNALING_ERROR',
-          message: 'Failed to process partner voice offer.',
+          message: "Couldn't connect to voice call. Please try again.",
         });
       }
     } finally {
@@ -414,11 +415,12 @@ export class PeerConnectionManager {
     try {
       await this.pc.setRemoteDescription({ type: 'answer', sdp });
       await this.flushPendingIceCandidates();
-    } catch {
+    } catch (err) {
       if (!this.isDestroyed) {
+        console.warn('[PeerConnectionManager] Failed to apply partner voice answer:', err);
         this.callbacks.onError?.({
           code: 'SIGNALING_ERROR',
-          message: 'Failed to apply partner voice answer.',
+          message: "Couldn't connect to voice call. Please try again.",
         });
       }
     } finally {

@@ -5,10 +5,11 @@ import Link from 'next/link';
 import {
   Tv,
   ArrowLeft,
-  Users2,
   Film,
   AlertTriangle,
   UserX,
+  Volume2,
+  X,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { useSession } from '@/hooks/useSession';
@@ -22,7 +23,6 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { UniversalPlayer } from '@/components/player/UniversalPlayer';
 import { ChatContainer } from '@/components/chat/ChatContainer';
-import { SYNC_CONSTANTS } from '@/lib/constants/sync.constants';
 
 interface RoomViewProps {
   roomCode: string;
@@ -201,7 +201,6 @@ export const RoomView: React.FC<RoomViewProps> = ({
   }
 
   const otherParticipants = presenceList.filter((p) => p.userId !== user.id);
-  const totalOnline = 1 + otherParticipants.length;
   const hostName = isHost
     ? user.username
     : presenceList.find((p) => p.userId === room.hostId)?.username ||
@@ -291,12 +290,41 @@ export const RoomView: React.FC<RoomViewProps> = ({
         </div>
       )}
 
-      {/* Mobile / Tablet (and Collapsed-Chat Desktop) Voice Status Banner */}
-      <VoiceCallBar
-        variant="banner"
-        {...sharedVoiceBarProps}
-        className={isChatOpen ? 'lg:hidden' : ''}
-      />
+      {/* Mobile Non-Intrusive Audio Unlock / Critical Error Banner */}
+      <div className="lg:hidden shrink-0">
+        {voiceCall.isAudioBlocked && (
+          <button
+            type="button"
+            onClick={() => void voiceCall.unlockRemoteAudio()}
+            className="w-full bg-[#9670FF]/25 border-b border-[#9670FF]/50 px-3 py-2 text-xs text-[#F7F4EC] flex items-center justify-center gap-2 cursor-pointer font-medium"
+          >
+            <Volume2 className="w-4 h-4 text-[#B397FF] shrink-0" />
+            <span>Tap to enable partner audio</span>
+          </button>
+        )}
+        {voiceCall.error && (
+          <div className="bg-[#331B1A] border-b border-[#E87A70]/40 px-3 py-2 text-xs text-[#F2B8B2] flex items-center justify-between gap-2">
+            <span className="truncate">{voiceCall.error.message}</span>
+            <button
+              type="button"
+              onClick={voiceCall.clearError}
+              className="p-1 text-[#F2B8B2] hover:text-[#F7F4EC] cursor-pointer shrink-0"
+              aria-label="Dismiss voice error"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop (Collapsed-Chat) Voice Status Banner */}
+      {!isChatOpen && (
+        <VoiceCallBar
+          variant="banner"
+          {...sharedVoiceBarProps}
+          className="hidden lg:block"
+        />
+      )}
 
       {/* Main Theater Split: Full-Stage Video Centerpiece + Independently Scrollable Chat Lounge */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
@@ -350,9 +378,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
                     <Button
                       variant="primary"
                       size="sm"
-                      className="mt-4 sm:mt-5"
+                      className="mt-4 sm:mt-5 text-xs sm:text-sm"
                       onClick={() => setIsChangeVideoOpen(true)}
-                      leftIcon={<Tv className="w-3.5 h-3.5" />}
+                      leftIcon={<Tv className="w-4 h-4" />}
                     >
                       Choose or Upload Video
                     </Button>
@@ -361,11 +389,11 @@ export const RoomView: React.FC<RoomViewProps> = ({
               </div>
             )}
 
-            {/* Quiet Screening Telemetry Strip */}
-            <div className="mt-2 shrink-0 flex items-center justify-between gap-3 text-[10px] sm:text-[11px] text-[#CDBF9F]/85 px-0.5">
+            {/* Streamlined screening telemetry (Joiners and Upload / URL consolidated in RoomHeader to eliminate duplicates) */}
+            <div className="mt-2 shrink-0 flex items-center justify-between gap-3 text-xs sm:text-[11px] text-[#CDBF9F]/85 px-1">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#9670FF] shrink-0" />
-                <span className="font-mono uppercase tracking-[0.12em] truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] shrink-0" />
+                <span className="font-mono uppercase tracking-[0.12em] text-[#CDBF9F] truncate">
                   {room.videoUrl
                     ? room.videoType === 'youtube'
                       ? 'YouTube · Synced'
@@ -373,16 +401,13 @@ export const RoomView: React.FC<RoomViewProps> = ({
                     : 'Awaiting Source'}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-[#CDBF9F] min-w-0">
-                <Users2 className="w-3.5 h-3.5 text-[#E8DDC5]/75 shrink-0" />
-                <span className="truncate">
-                  {otherParticipants.length > 0
-                    ? `${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} in room · Watching with ${otherParticipants
-                        .map((p) => p.username)
-                        .join(', ')}`
-                    : `1/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} viewer in lounge`}
-                </span>
-              </div>
+
+              {voiceCall.isInCall && (
+                <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#7AD3A8]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] animate-pulse" />
+                  <span>Voice Active ({voiceCall.participants.length})</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

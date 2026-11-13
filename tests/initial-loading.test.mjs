@@ -213,7 +213,7 @@ describe('Optimization 4 — Faster Initial Loading', () => {
     assert.match(roomPageCode, /Promise\.all\(\[\s*params,\s*searchParams,?\s*\]\)/);
 
     assert.match(useRoomCode, /realtimeAuthPromiseRef/);
-    assert.match(useRoomCode, /roomService\s*\n?\s*\.getChatMessages\(resolvedRoom\.id\)/);
+    assert.match(useRoomCode, /roomService\s*\n?\s*\.getChatMessages\(\s*resolvedRoom\.id/);
     assert.match(useRoomCode, /initialChatHistory/);
 
     assert.match(roomViewCode, /initialHistory=\{initialChatHistory\}/);

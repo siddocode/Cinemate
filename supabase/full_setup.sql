@@ -898,8 +898,7 @@ GRANT EXECUTE ON FUNCTION public.get_expired_videos() TO service_role;
 --     active callers, and adds Postgres-backed TURN credential rate limiting.
 --     MUST stay after section 15 so explicit REVOKEs override ALTER DEFAULT PRIVILEGES.
 -- -----------------------------------------------------------------------------
-
--- -----------------------------------------------------------------------------
+ -----------------------------------------------------------------------------
 -- 1. ACTIVE VOICE CALL SLOT REGISTRY (MAX 2 PARTICIPANTS PER ROOM)
 --    Stores ONLY slot occupancy & server-issued call_session_id (no SDP/ICE/audio).
 -- -----------------------------------------------------------------------------
