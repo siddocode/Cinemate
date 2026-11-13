@@ -14,7 +14,7 @@ export const Badge: React.FC<BadgeProps> = ({
   ...props
 }) => {
   const variants = {
-    default: 'bg-[#102B23] text-[#CDBF9F] border-[#E8DDC5]/18',
+    default: 'bg-[#173D30] text-[#CDBF9F] border-[#E8DDC5]/22',
     success: 'bg-[#133528] text-[#9FE2BF] border-[#7AD3A8]/30',
     warning: 'bg-[#292214] text-[#F0C987] border-[#E9B872]/30',
     danger: 'bg-[#331B1A] text-[#F2B8B2] border-[#E87A70]/35',
@@ -34,7 +34,7 @@ export const Badge: React.FC<BadgeProps> = ({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border tracking-wide',
+        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border tracking-wide',
         variants[variant],
         className
       )}

@@ -306,6 +306,64 @@ export interface Database {
           }
         ];
       };
+      room_queue_items: {
+        Row: {
+          id: string;
+          room_id: string;
+          video_id: string;
+          video_url: string;
+          video_type: 'youtube' | 'url' | 'upload';
+          title: string;
+          channel_title: string | null;
+          thumbnail_url: string | null;
+          duration_seconds: number;
+          position: number;
+          added_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          room_id: string;
+          video_id?: string;
+          video_url?: string;
+          video_type?: 'youtube' | 'url' | 'upload';
+          title: string;
+          channel_title?: string | null;
+          thumbnail_url?: string | null;
+          duration_seconds?: number;
+          position?: number;
+          added_by: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          room_id?: string;
+          video_id?: string;
+          video_url?: string;
+          video_type?: 'youtube' | 'url' | 'upload';
+          title?: string;
+          channel_title?: string | null;
+          thumbnail_url?: string | null;
+          duration_seconds?: number;
+          position?: number;
+          added_by?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'room_queue_items_room_id_fkey';
+            columns: ['room_id'];
+            referencedRelation: 'rooms';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'room_queue_items_added_by_fkey';
+            columns: ['added_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -368,6 +426,33 @@ export interface Database {
           p_is_guest?: boolean;
         };
         Returns: Json;
+      };
+      can_control_room_queue: {
+        Args: {
+          p_room_id: string;
+          p_user_id: string;
+        };
+        Returns: boolean;
+      };
+      add_room_queue_item: {
+        Args: {
+          p_room_id: string;
+          p_video_id?: string;
+          p_video_url?: string;
+          p_video_type?: string;
+          p_title?: string;
+          p_channel_title?: string | null;
+          p_thumbnail_url?: string | null;
+          p_duration_seconds?: number;
+        };
+        Returns: Database['public']['Tables']['room_queue_items']['Row'];
+      };
+      reorder_room_queue: {
+        Args: {
+          p_room_id: string;
+          p_item_ids: string[];
+        };
+        Returns: boolean;
       };
     };
     Enums: {

@@ -134,6 +134,10 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
     }
   }
 
+  getLastErrorCode(): number | null {
+    return this.videoElement?.error?.code ?? null;
+  }
+
   getPlaybackState(): PlaybackState {
     if (!this.videoElement) {
       return {

@@ -22,6 +22,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
   private pendingSeekTarget: number | null = null;
   private pendingSeekAt: number = 0;
   private currentVideoId: string = '';
+  private lastErrorCode: number | null = null;
 
   /**
    * Loads the YouTube IFrame API script dynamically.
@@ -60,6 +61,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
 
   async initialize(container: HTMLElement, initialVideoId: string): Promise<void> {
     this.isDestroyed = false;
+    this.lastErrorCode = null;
     this.containerElement = container;
     const cleanId = extractYouTubeId(initialVideoId) || initialVideoId;
     this.currentVideoId = cleanId;
@@ -135,6 +137,7 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
             onError: (err) => {
               if (this.isDestroyed) return;
               console.warn('[Syncora] YouTube Player error:', err.data);
+              this.lastErrorCode = err.data;
               this.emit('ERROR', this.getPlaybackState());
             },
             onPlaybackRateChange: () => {
@@ -286,6 +289,10 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
     } catch (err) {
       console.warn('[Syncora] setVolume error:', err);
     }
+  }
+
+  getLastErrorCode(): number | null {
+    return this.lastErrorCode;
   }
 
   getPlaybackState(): PlaybackState {

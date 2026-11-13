@@ -38,17 +38,40 @@ export interface RealtimeCallSlotChange {
   oldRow?: Partial<RealtimeCallSlotRow>;
 }
 
+export interface RealtimeQueueItemRow {
+  id: string;
+  room_id: string;
+  video_id: string;
+  video_url: string;
+  video_type: 'youtube' | 'url' | 'upload';
+  title: string;
+  channel_title: string | null;
+  thumbnail_url: string | null;
+  duration_seconds: number;
+  position: number;
+  added_by: string;
+  created_at: string;
+}
+
+export interface RealtimeQueueChange {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  newRow?: RealtimeQueueItemRow;
+  oldRow?: Partial<RealtimeQueueItemRow>;
+}
+
 type ChatMessageListener = (row: RealtimeChatMessageRow) => void;
 type ChatBroadcastListener = (payload: ChatBroadcastPayload) => void;
 type ChatSeenListener = (payload: RealtimeChatSeenPayload) => void;
 type TypingListener = (payload: RealtimeTypingPayload) => void;
 type CallSlotListener = (change: RealtimeCallSlotChange) => void;
+type QueueListener = (change: RealtimeQueueChange) => void;
 
 const chatMessageListeners = new Map<string, Set<ChatMessageListener>>();
 const chatBroadcastListeners = new Map<string, Set<ChatBroadcastListener>>();
 const chatSeenListeners = new Map<string, Set<ChatSeenListener>>();
 const typingListeners = new Map<string, Set<TypingListener>>();
 const callSlotListeners = new Map<string, Set<CallSlotListener>>();
+const queueListeners = new Map<string, Set<QueueListener>>();
 const attachedTypingChannels = new WeakSet<RealtimeChannel>();
 
 /**
@@ -236,3 +259,37 @@ export function emitRoomCallSlotChange(
   listeners.forEach((listener) => listener(change));
 }
 
+
+/**
+ * Registers a listener for `room_queue_items` postgres_changes received via the unified room channel.
+ */
+export function subscribeToRoomQueueChanges(
+  roomId: string,
+  listener: QueueListener
+): () => void {
+  let set = queueListeners.get(roomId);
+  if (!set) {
+    set = new Set();
+    queueListeners.set(roomId, set);
+  }
+  set.add(listener);
+
+  return () => {
+    const current = queueListeners.get(roomId);
+    if (current) {
+      current.delete(listener);
+      if (current.size === 0) {
+        queueListeners.delete(roomId);
+      }
+    }
+  };
+}
+
+/**
+ * Dispatches a `room_queue_items` change payload from the unified room channel to listeners.
+ */
+export function emitRoomQueueChange(roomId: string, change: RealtimeQueueChange): void {
+  const listeners = queueListeners.get(roomId);
+  if (!listeners) return;
+  listeners.forEach((listener) => listener(change));
+}

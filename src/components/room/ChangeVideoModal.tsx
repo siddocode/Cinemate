@@ -17,11 +17,17 @@ interface ChangeVideoModalProps {
   roomId: string;
   currentVideoUrl: string;
   onSelectVideo: (url: string, type: VideoSourceType) => Promise<void>;
+  initialTab?: VideoSourceType;
 }
 
 export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = (props) => {
   if (!props.isOpen) return null;
-  return <ChangeVideoModalContent key={`${props.roomId}:${props.currentVideoUrl}`} {...props} />;
+  return (
+    <ChangeVideoModalContent
+      key={`${props.roomId}:${props.currentVideoUrl}:${props.initialTab || 'youtube'}`}
+      {...props}
+    />
+  );
 };
 
 const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
@@ -30,9 +36,10 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
   roomId,
   currentVideoUrl,
   onSelectVideo,
+  initialTab = 'youtube',
 }) => {
   const { user } = useSession();
-  const [activeTab, setActiveTab] = useState<VideoSourceType>('youtube');
+  const [activeTab, setActiveTab] = useState<VideoSourceType>(initialTab);
   const [youtubeInput, setYoutubeInput] = useState(() =>
     extractYouTubeId(currentVideoUrl) ? currentVideoUrl : ''
   );
@@ -180,8 +187,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
       description="Load a YouTube link, direct streaming URL, or personal clip up to 50MB."
     >
       <div className="space-y-5">
-        {/* Warm Sand Pill Switcher */}
-        <div className="grid grid-cols-3 p-1 bg-[#DFD2B4] rounded-full text-xs">
+        {/* Dark pill switcher */}
+        <div className="grid grid-cols-3 p-1 bg-[#173D30] rounded-full text-[13px]">
           <button
             type="button"
             disabled={isUploading}
@@ -192,8 +199,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             }}
             className={`py-2 rounded-full font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
               activeTab === 'youtube'
-                ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
-                : 'text-[#173D30]/80 hover:text-[#102B23]'
+                ? 'bg-[#0B1E17] text-[#F7F4EC] shadow-sm'
+                : 'text-[#CDBF9F]/90 hover:text-[#F7F4EC]'
             }`}
           >
             <Tv className="w-3.5 h-3.5" />
@@ -209,8 +216,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             }}
             className={`py-2 rounded-full font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
               activeTab === 'url'
-                ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
-                : 'text-[#173D30]/80 hover:text-[#102B23]'
+                ? 'bg-[#0B1E17] text-[#F7F4EC] shadow-sm'
+                : 'text-[#CDBF9F]/90 hover:text-[#F7F4EC]'
             }`}
           >
             <LinkIcon className="w-3.5 h-3.5" />
@@ -226,8 +233,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             }}
             className={`py-2 rounded-full font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
               activeTab === 'upload'
-                ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
-                : 'text-[#173D30]/80 hover:text-[#102B23]'
+                ? 'bg-[#0B1E17] text-[#F7F4EC] shadow-sm'
+                : 'text-[#CDBF9F]/90 hover:text-[#F7F4EC]'
             }`}
           >
             <Upload className="w-3.5 h-3.5" />
@@ -246,6 +253,7 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
               error={error}
               leftIcon={<Tv className="w-4 h-4" />}
               disabled={isUploading}
+              tone="dark"
               autoFocus
             />
             <div className="flex justify-end gap-2 pt-2">
@@ -283,6 +291,7 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
               helperText="Paste any publicly accessible direct video streaming link."
               leftIcon={<LinkIcon className="w-4 h-4" />}
               disabled={isUploading}
+              tone="dark"
               autoFocus
             />
             <div className="flex justify-end gap-2 pt-2">
@@ -312,13 +321,13 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
         {activeTab === 'upload' && (
           <form onSubmit={handleUploadSubmit} className="space-y-4">
             {metrics?.isHardBlocked && (
-              <div className="flex items-start gap-2.5 text-xs text-[#7F1D1D] bg-[#FDECEC] border border-[#DC2626]/30 p-3.5 rounded-xl">
-                <ShieldAlert className="w-5 h-5 text-[#B91C1C] shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 text-[13px] text-[#FCA5A5] bg-[#2A1215] border border-[#DC2626]/40 p-3.5 rounded-xl">
+                <ShieldAlert className="w-5 h-5 text-[#EF4444] shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-semibold text-[#7F1D1D]">
+                  <p className="font-semibold text-[#FCA5A5]">
                     Personal Video Storage Safe Limit Reached
                   </p>
-                  <p className="text-[#7F1D1D]/85 leading-relaxed">
+                  <p className="text-[#FCA5A5]/90 leading-relaxed">
                     Monthly storage egress safe ceiling reached (~1.8GB / 2.0GB).
                     Personal uploads are paused—please use <strong>YouTube</strong> or{' '}
                     <strong>Direct URL</strong> instead.
@@ -328,8 +337,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             )}
 
             {!metrics?.isHardBlocked && metrics?.isSoftWarning && (
-              <div className="flex items-start gap-2.5 text-xs text-[#78350F] bg-[#FDF3DC] border border-[#D97706]/30 p-3 rounded-xl">
-                <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 text-[13px] text-[#F0C987] bg-[#292214] border border-[#D97706]/40 p-3 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-[#E9B872] shrink-0 mt-0.5" />
                 <span>
                   Monthly storage egress is at ~75% of free tier. YouTube or direct
                   links are recommended.
@@ -338,10 +347,10 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             )}
 
             <div
-              className={`border border-dashed rounded-xl p-6 text-center transition-colors relative bg-[#F7F4EC] ${
+              className={`border border-dashed rounded-xl p-6 text-center transition-colors relative bg-[#102B23] ${
                 metrics?.isHardBlocked
-                  ? 'border-[#173D30]/15 opacity-60 cursor-not-allowed'
-                  : 'border-[#173D30]/30 hover:border-[#7235A8] cursor-pointer'
+                  ? 'border-[#E8DDC5]/15 opacity-60 cursor-not-allowed'
+                  : 'border-[#E8DDC5]/30 hover:border-[#9670FF] cursor-pointer'
               }`}
             >
               <input
@@ -352,13 +361,13 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
                 disabled={isUploading || Boolean(metrics?.isHardBlocked)}
               />
               <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-[#EDE2CA] border border-[#173D30]/15 flex items-center justify-center text-[#7235A8]">
+                <div className="w-10 h-10 rounded-xl bg-[#173D30] border border-[#E8DDC5]/20 flex items-center justify-center text-[#B397FF]">
                   <Upload className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-semibold text-[#102B23] max-w-full truncate px-2">
+                <span className="text-sm font-semibold text-[#F7F4EC] max-w-full truncate px-2">
                   {selectedFile ? selectedFile.name : 'Click or drop a video clip here'}
                 </span>
-                <span className="text-xs font-mono text-[#173D30]/70">
+                <span className="text-[13px] font-mono text-[#CDBF9F]/85">
                   {selectedFile
                     ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB ready`
                     : 'MP4, WebM, or MOV · 50MB max'}
@@ -369,15 +378,15 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             {/* Upload Progress Bar */}
             {isUploading && (
               <div className="space-y-1.5">
-                <div className="flex justify-between text-xs text-[#173D30]/80">
+                <div className="flex justify-between text-[13px] text-[#CDBF9F]/90">
                   <span>Uploading to room storage...</span>
-                  <span className="font-mono tabular-nums font-semibold text-[#102B23]">
+                  <span className="font-mono tabular-nums font-semibold text-[#F7F4EC]">
                     {uploadProgress}%
                   </span>
                 </div>
-                <div className="w-full h-2 bg-[#DFD2B4] rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-[#173D30] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#7235A8] transition-all duration-300"
+                    className="h-full bg-[#9670FF] transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -385,8 +394,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             )}
 
             {error && (
-              <div className="flex items-start gap-2 text-xs text-[#7F1D1D] bg-[#FDECEC] border border-[#DC2626]/30 p-3 rounded-xl">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#B91C1C]" />
+              <div className="flex items-start gap-2 text-[13px] text-[#FCA5A5] bg-[#2A1215] border border-[#DC2626]/40 p-3 rounded-xl">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#EF4444]" />
                 <span>{error}</span>
               </div>
             )}

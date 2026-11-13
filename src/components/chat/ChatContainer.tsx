@@ -149,7 +149,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       <div className="hidden lg:flex h-10 border-b border-[#E8DDC5]/12 bg-[#0E281F] px-4 items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <MessageSquare className="w-3.5 h-3.5 text-[#9670FF] shrink-0" />
-          <span className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#E8DDC5] truncate">
+          <span className="text-xs font-mono uppercase tracking-[0.16em] text-[#E8DDC5] truncate">
             Lounge Chat
           </span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] shrink-0" />
@@ -193,7 +193,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto overscroll-contain touch-pan-y space-y-3"
       >
         {isLoading && messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-xs font-mono text-[#CDBF9F]/70">
+          <div className="flex items-center justify-center h-full text-xs font-mono text-[#CDBF9F]/85">
             Loading conversation...
           </div>
         ) : (
@@ -206,7 +206,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             if (isSystem) {
               return (
                 <div key={msg.id} className="text-center my-1.5">
-                  <span className="inline-flex items-center gap-1.5 text-xs bg-[#0E281F] border border-[#E8DDC5]/12 text-[#CDBF9F] px-3 py-1 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 text-[13px] bg-[#0E281F] border border-[#E8DDC5]/12 text-[#CDBF9F] px-3 py-1 rounded-full">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#9670FF]" />
                     {msg.content}
                   </span>
@@ -221,15 +221,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               >
                 <div className="max-w-[88%] sm:max-w-[85%] space-y-1">
                   <div
-                    className={`flex items-center gap-1.5 text-xs sm:text-[11px] px-1 ${
-                      isMe ? 'justify-end text-[#CDBF9F]' : 'text-[#CDBF9F]/80'
+                    className={`flex items-center gap-1.5 text-xs px-1 ${
+                      isMe ? 'justify-end text-[#CDBF9F]' : 'text-[#CDBF9F]/85'
                     }`}
                   >
                     <span className="font-medium text-[#E8DDC5]">
                       {isMe ? 'You' : msg.username}
                     </span>
-                    <span className="text-[#E8DDC5]/30">·</span>
-                    <span className="font-mono text-[11px] sm:text-[10px] text-[#CDBF9F]/65">
+                    <span className="text-[#E8DDC5]/40">·</span>
+                    <span className="font-mono text-[11px] text-[#CDBF9F]/85">
                       {new Date(msg.createdAt).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -237,7 +237,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     </span>
                   </div>
                   <div
-                    className={`text-sm sm:text-xs px-3.5 py-2.5 sm:py-2 rounded-2xl break-words leading-relaxed transition-opacity ${
+                    className={`text-sm px-3.5 py-2.5 sm:py-2 rounded-2xl break-words leading-relaxed transition-opacity ${
                       msg.status === 'failed'
                         ? 'bg-[#3B181A] border border-[#F87171]/55 text-[#FDECEC] rounded-tr-xs'
                         : isMe
@@ -250,16 +250,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
                   {/* Delivery & Read Receipts Status for sender */}
                   {isMe && isLastOfMyRun && (
-                    <div className="flex items-center justify-end px-1 gap-1 text-[11px] sm:text-[10px] font-mono select-none">
+                    <div className="flex items-center justify-end px-1 gap-1 text-[11px] font-mono select-none">
                       {msg.status === 'sending' && (
-                        <span className="inline-flex items-center gap-1 text-[#CDBF9F]/70">
+                        <span className="inline-flex items-center gap-1 text-[#CDBF9F]/85">
                           <Loader2 className="w-2.5 h-2.5 animate-spin" />
                           <span>Sending…</span>
                         </span>
                       )}
                       {msg.status === 'sent' && (
-                        <span className="inline-flex items-center gap-1 text-[#CDBF9F]/60" title="Delivered to room">
-                          <Check className="w-3 h-3 text-[#CDBF9F]/70" />
+                        <span className="inline-flex items-center gap-1 text-[#CDBF9F]/85" title="Delivered to room">
+                          <Check className="w-3 h-3 text-[#CDBF9F]/85" />
                           <span>Sent</span>
                         </span>
                       )}
@@ -273,7 +273,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                   )}
 
                   {isMe && msg.status === 'failed' && (
-                    <div className="flex items-center justify-end gap-2 px-1 text-xs sm:text-[10px] text-[#FCA5A5]">
+                    <div className="flex items-center justify-end gap-2 px-1 text-xs text-[#FCA5A5]">
                       <span className="inline-flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         <span>Failed to save</span>
@@ -289,7 +289,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                       <button
                         type="button"
                         onClick={() => dismissFailedMessage(msg.id)}
-                        className="text-[#CDBF9F]/70 hover:text-[#F7F4EC] cursor-pointer"
+                        className="text-[#CDBF9F]/85 hover:text-[#F7F4EC] cursor-pointer"
                         aria-label="Dismiss failed message"
                         title="Dismiss"
                       >
@@ -305,7 +305,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
         {/* Typing Indicator */}
         {partnerTyping && (
-          <div className="flex items-center text-xs text-[#CDBF9F] py-0.5">
+          <div className="flex items-center text-[13px] text-[#CDBF9F] py-0.5">
             <span className="inline-flex gap-2 items-center bg-[#0E281F] border border-[#E8DDC5]/14 px-2.5 py-1 rounded-full">
               <span>{partnerTyping || partnerName || 'Someone'} is typing</span>
               <span className="flex gap-1">
@@ -364,7 +364,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             value={input}
             onChange={handleInputChange}
             placeholder={`Message ${partnerName || 'room'}...`}
-            className="w-full bg-[#173D30]/80 border border-[#E8DDC5]/18 rounded-xl px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-[#F7F4EC] placeholder-[#CDBF9F]/50 focus:outline-none focus:border-[#9670FF] focus:ring-1 focus:ring-[#9670FF]/40 transition-colors"
+            className="w-full bg-[#173D30]/80 border border-[#E8DDC5]/18 rounded-xl px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-[#F7F4EC] placeholder-[#CDBF9F]/65 focus:outline-none focus:border-[#9670FF] focus:ring-1 focus:ring-[#9670FF]/40 transition-colors"
           />
         </div>
 

@@ -126,7 +126,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
   const getVideoSourceBadge = (room: UserRoomSummary) => {
     if (!room.videoUrl) {
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] text-[#CDBF9F]/70">
+        <span className="inline-flex items-center gap-1 text-xs text-[#CDBF9F]/90">
           <Film className="w-3 h-3" />
           No video yet
         </span>
@@ -134,7 +134,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
     }
     if (room.videoType === 'youtube') {
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] text-[#E8DDC5]">
+        <span className="inline-flex items-center gap-1 text-xs text-[#E8DDC5]">
           <Tv className="w-3 h-3 text-[#9670FF]" />
           YouTube
         </span>
@@ -142,14 +142,14 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
     }
     if (room.videoType === 'upload') {
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] text-[#E8DDC5]">
+        <span className="inline-flex items-center gap-1 text-xs text-[#E8DDC5]">
           <Upload className="w-3 h-3 text-[#9670FF]" />
           Uploaded Video
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-[#E8DDC5]">
+      <span className="inline-flex items-center gap-1 text-xs text-[#E8DDC5]">
         <Link2 className="w-3 h-3 text-[#9670FF]" />
         Direct Stream
       </span>
@@ -166,7 +166,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
           </h2>
         </div>
         {!isLoading && (
-          <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-[#CDBF9F]">
+          <span className="text-xs font-mono uppercase tracking-[0.14em] text-[#CDBF9F]">
             {rooms.length} {rooms.length === 1 ? 'room' : 'rooms'}
           </span>
         )}
@@ -210,13 +210,13 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                       </h3>
                     </div>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className="text-[10px] font-mono font-semibold bg-[#E8DDC5] text-[#102B23] px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-mono font-semibold bg-[#E8DDC5] text-[#102B23] px-2 py-0.5 rounded-full">
                         {room.code}
                       </span>
-                      <Badge variant={isHost ? 'purple' : 'default'} className="text-[10px]">
+                      <Badge variant={isHost ? 'purple' : 'default'}>
                         {isHost ? 'Host' : 'Member'}
                       </Badge>
-                      <span className="font-mono text-[10px] text-[#CDBF9F]/70 ml-auto sm:ml-0">
+                      <span className="font-mono text-[11px] text-[#CDBF9F]/85 ml-auto sm:ml-0">
                         {formatRelativeDate(room.lastSyncedAt)}
                       </span>
                     </div>
@@ -240,7 +240,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E8DDC5]/10">
-                  <div className="min-w-0 truncate text-[11px]">
+                  <div className="min-w-0 truncate text-xs">
                     {getVideoSourceBadge(room)}
                   </div>
 
@@ -254,7 +254,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                     }}
                     isLoading={openingRoomId === room.id}
                     disabled={isNavigating || deletingRoomId !== null}
-                    className="h-7 px-3 text-[11px] shrink-0 rounded-lg"
+                    className="h-7 px-3 text-xs shrink-0 rounded-lg"
                     leftIcon={<Play className="w-3 h-3 fill-current" />}
                   >
                     {openingRoomId === room.id

@@ -84,7 +84,7 @@ export const Navbar: React.FC = () => {
             <span
               className={`${
                 isRoomRoute ? 'hidden sm:inline-flex' : 'inline-flex'
-              } items-center px-2 sm:px-2.5 py-0.5 rounded-full bg-[#E8DDC5] text-[#102B23] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.12em] leading-tight shrink-0`}
+              } items-center px-2 sm:px-2.5 py-0.5 rounded-full bg-[#E8DDC5] text-[#102B23] text-[11px] font-bold uppercase tracking-[0.12em] leading-tight shrink-0`}
             >
               Lounge
             </span>
@@ -100,7 +100,7 @@ export const Navbar: React.FC = () => {
                   <Button
                     variant={pathname === '/register' ? 'outline' : 'secondary'}
                     size="sm"
-                    className="text-xs rounded-full px-2.5 sm:px-3.5"
+                    className="rounded-full px-2.5 sm:px-3.5"
                     leftIcon={<LogIn className="w-3.5 h-3.5 text-[#9670FF]" />}
                   >
                     Sign In
@@ -111,7 +111,7 @@ export const Navbar: React.FC = () => {
                   <Button
                     variant={pathname === '/register' ? 'primary' : 'outline'}
                     size="sm"
-                    className="text-xs rounded-full px-3 sm:px-4"
+                    className="rounded-full px-3 sm:px-4"
                   >
                     Register
                   </Button>
@@ -123,7 +123,7 @@ export const Navbar: React.FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => handleOpenAuth('signin')}
-                  className="text-xs rounded-full px-2.5 sm:px-3.5"
+                  className="rounded-full px-2.5 sm:px-3.5"
                   leftIcon={<LogIn className="w-3.5 h-3.5 text-[#9670FF]" />}
                 >
                   Sign In
@@ -133,7 +133,7 @@ export const Navbar: React.FC = () => {
                   variant="primary"
                   size="sm"
                   onClick={() => handleOpenAuth('signup')}
-                  className="text-xs rounded-full px-3 sm:px-4"
+                  className="rounded-full px-3 sm:px-4"
                 >
                   Register
                 </Button>
@@ -148,7 +148,7 @@ export const Navbar: React.FC = () => {
                 className="flex items-center gap-1.5 sm:gap-2.5 pl-1 pr-2 sm:pl-1.5 sm:pr-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/20 hover:border-[#E8DDC5]/40 transition-colors text-xs group cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
                 title="Click to edit display name"
               >
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-[11px] sm:text-xs uppercase shrink-0">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-xs uppercase shrink-0">
                   {(user.username || user.email || 'U').charAt(0)}
                 </div>
                 <div className="flex flex-col text-left min-w-0">
@@ -159,7 +159,7 @@ export const Navbar: React.FC = () => {
                     {user.username || 'User'}
                   </span>
                   {user.email && (
-                    <span className="text-[10px] text-[#CDBF9F]/75 max-w-[110px] sm:max-w-[150px] truncate hidden sm:block leading-tight">
+                    <span className="text-xs text-[#CDBF9F]/90 max-w-[110px] sm:max-w-[150px] truncate hidden sm:block leading-tight">
                       {user.email}
                     </span>
                   )}
@@ -174,7 +174,7 @@ export const Navbar: React.FC = () => {
                 size="sm"
                 onClick={handleSignOut}
                 isLoading={isSigningOut}
-                className="text-xs text-[#E8DDC5]/85 hover:text-[#F7F4EC] rounded-full px-2 sm:px-3"
+                className="text-[#E8DDC5]/85 hover:text-[#F7F4EC] rounded-full px-2 sm:px-3"
                 title="Sign Out"
                 aria-label="Sign Out"
                 leftIcon={<LogOut className="w-3.5 h-3.5" />}
@@ -204,6 +204,7 @@ export const Navbar: React.FC = () => {
             placeholder="e.g. Alex"
             maxLength={25}
             disabled={isSavingName}
+            tone="dark"
             autoFocus
           />
           <div className="flex justify-end gap-2 pt-2">

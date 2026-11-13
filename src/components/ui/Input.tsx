@@ -37,8 +37,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <label
             htmlFor={inputId}
             className={cn(
-              'block text-[11px] font-semibold uppercase tracking-[0.12em]',
-              isSand ? 'text-[#173D30]/80' : 'text-[#CDBF9F]'
+              'block text-[13px] font-semibold uppercase tracking-[0.12em]',
+              isSand ? 'text-[#173D30]/85' : 'text-[#CDBF9F]'
             )}
           >
             {label}
@@ -63,8 +63,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               'focus:outline-none focus:border-[#7235A8] focus:ring-2 focus:ring-[#9670FF]/25',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               isSand
-                ? 'bg-[#F7F4EC] text-[#102B23] placeholder-[#173D30]/45 border-[#173D30]/22'
-                : 'bg-[#102B23] text-[#F7F4EC] placeholder-[#CDBF9F]/45 border-[#E8DDC5]/20',
+                ? 'bg-[#F7F4EC] text-[#102B23] placeholder-[#173D30]/55 border-[#173D30]/25'
+                : 'bg-[#102B23] text-[#F7F4EC] placeholder-[#CDBF9F]/55 border-[#E8DDC5]/20',
               leftIcon && 'pl-10',
               rightIcon && 'pr-10',
               error &&
@@ -87,12 +87,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         {error && (
-          <p className={cn('text-xs mt-1 font-medium', isSand ? 'text-[#991B1B]' : 'text-[#F2B8B2]')}>
+          <p className={cn('text-[13px] mt-1 font-medium', isSand ? 'text-[#991B1B]' : 'text-[#F2B8B2]')}>
             {error}
           </p>
         )}
         {helperText && !error && (
-          <p className={cn('text-xs mt-1', isSand ? 'text-[#173D30]/65' : 'text-[#CDBF9F]/75')}>
+          <p className={cn('text-[13px] mt-1', isSand ? 'text-[#173D30]/75' : 'text-[#CDBF9F]/85')}>
             {helperText}
           </p>
         )}

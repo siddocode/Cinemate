@@ -4,10 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Users2,
-  Tv,
   ArrowRight,
+  Clapperboard,
   Link2,
+  ListVideo,
+  Loader2,
+  MessageCircle,
+  Play,
+  Upload,
+  Users2,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { fetchDashboardData } from '@/lib/services/dashboardService';
@@ -15,33 +20,79 @@ import { FavoriteItem } from '@/lib/services/favoriteService';
 import { UserRoomSummary } from '@/core/types/room.types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
 import { RecentRoomsSection } from '@/components/room/RecentRoomsSection';
 import { FavoritesSection } from '@/components/room/FavoritesSection';
-import { AccentUnderline } from '@/components/common/AccentUnderline';
-import { FeaturePillars } from '@/components/common/FeaturePillars';
-import { generateRoomCode, normalizeRoomCode } from '@/lib/utils/code';
-import { extractYouTubeId } from '@/lib/utils/youtube';
+import { YouTubeIcon } from '@/components/common/YouTubeIcon';
 import {
-  CREATE_ROOM_BUTTON_STAGES,
-  JOIN_ROOM_BUTTON_STAGES,
-  useLoadingStages,
-} from '@/hooks/useLoadingStages';
+  SourceSetupModal,
+  SourceSetupMode,
+} from '@/components/home/SourceSetupModal';
+import { generateRoomCode, normalizeRoomCode } from '@/lib/utils/code';
+import { JOIN_ROOM_BUTTON_STAGES, useLoadingStages } from '@/hooks/useLoadingStages';
+
+interface SecondarySourceProps {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function SecondarySource({
+  title,
+  description,
+  icon,
+  onClick,
+  disabled = false,
+}: SecondarySourceProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group flex w-full items-center gap-3 rounded-xl border border-[#E8DDC5]/14 bg-[#102B23]/75 p-3.5 text-left transition hover:border-[#9670FF]/45 hover:bg-[#173D30] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E8DDC5]/10 bg-[#0B1E17] text-[#B397FF]">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-[#F7F4EC]">{title}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-[#CDBF9F]/90">
+          {description}
+        </span>
+      </span>
+      <ArrowRight className="h-4 w-4 shrink-0 text-[#9670FF] transition-transform group-hover:translate-x-0.5" />
+    </button>
+  );
+}
+
+function ComingSoonSource({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E8DDC5]/14 bg-[#102B23]/50 px-2.5 py-1 text-xs font-medium text-[#CDBF9F]/85">
+      {icon}
+      {label}
+    </span>
+  );
+}
 
 export default function HomePage() {
   const router = useRouter();
   const { user, isAuthenticated } = useSession();
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
-  // Create room state
-  const [roomTitle, setRoomTitle] = useState('');
-  const [videoInput, setVideoInput] = useState('');
-  const [createError, setCreateError] = useState('');
+  const [setupMode, setSetupMode] = useState<SourceSetupMode | null>(null);
+  const [isCreatingSource, setIsCreatingSource] = useState(false);
 
-  // Join room state
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinError, setJoinError] = useState('');
-  const [navigatingAction, setNavigatingAction] = useState<'create' | 'join' | 'shelf' | null>(null);
+  const [navigatingAction, setNavigatingAction] = useState<
+    'create' | 'join' | 'shelf' | null
+  >(null);
   const [recentRooms, setRecentRooms] = useState<UserRoomSummary[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [loadedDashboardUserId, setLoadedDashboardUserId] = useState<string | null>(null);
@@ -77,46 +128,41 @@ export default function HomePage() {
     isAuthenticated && user.id && loadedDashboardUserId !== user.id
   );
 
-  const isLobbyBusy = navigatingAction !== null;
-  const { stage: createButtonStage } = useLoadingStages(
-    navigatingAction === 'create',
-    CREATE_ROOM_BUTTON_STAGES
-  );
+  const isLobbyBusy = navigatingAction !== null || isCreatingSource;
   const { stage: joinButtonStage } = useLoadingStages(
     navigatingAction === 'join',
     JOIN_ROOM_BUTTON_STAGES
   );
 
-  const handleCreateRoom = (e: React.FormEvent) => {
-    e.preventDefault();
+  const goToYouTube = () => {
     if (isLobbyBusy) return;
-    setCreateError('');
+    setNavigatingAction('create');
+    router.push('/browse');
+  };
 
+  const handleCreateFromModal = ({ title, url }: { title: string; url?: string }) => {
+    if (isLobbyBusy) return;
     const code = generateRoomCode();
     const params = new URLSearchParams();
     params.set('create', '1');
-    const trimmedTitle = roomTitle.trim();
-    if (trimmedTitle) {
-      params.set('title', trimmedTitle);
-    }
+    const trimmedTitle = title.trim();
+    if (trimmedTitle) params.set('title', trimmedTitle);
 
-    if (videoInput.trim()) {
-      const ytId = extractYouTubeId(videoInput.trim());
-      if (ytId) {
-        params.set('v', ytId);
-      } else {
-        setCreateError('Please enter a valid YouTube video URL or ID.');
-        return;
-      }
+    if (setupMode === 'url' && url) {
+      params.set('source', 'url');
+      params.set('video', url);
+    } else {
+      params.set('source', 'upload');
+      params.set('openUpload', '1');
     }
 
     setNavigatingAction('create');
-    const query = params.toString();
-    router.push(`/room/${code}${query ? `?${query}` : ''}`);
+    setIsCreatingSource(true);
+    router.push(`/room/${code}?${params.toString()}`);
   };
 
-  const handleJoinRoom = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleJoinRoom = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (isLobbyBusy) return;
     setJoinError('');
 
@@ -140,155 +186,191 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between max-w-6xl w-full mx-auto px-4 sm:px-6 pt-4 pb-8 sm:pt-5 sm:pb-10">
-      <div className="flex flex-col items-center text-center">
-        {/* Centered Editorial Hero Heading */}
-        <h1 className="font-serif text-3xl sm:text-4xl lg:text-[2.95rem] font-bold tracking-[-0.02em] leading-[1.06] text-[#F7F4EC] max-w-3xl">
-          Watch YouTube together.
-          <br />
-          <span className="font-normal">
-            Chat side-by-side in{' '}
-            <AccentUnderline>real-time.</AccentUnderline>
-          </span>
-        </h1>
-
-        <p className="mt-2 text-xs sm:text-sm text-[#CDBF9F] max-w-xl leading-relaxed">
-          Zero lag. Host-synchronized playback. Private watch rooms for up to 4
-          friends—enjoy YouTube, direct streams, and personal uploads together.
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 pb-8 pt-5 sm:px-6 sm:pb-10 sm:pt-7">
+      <header>
+        <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#9670FF]">
+          New watch party
         </p>
+        <h1 className="mt-1.5 font-serif text-3xl font-bold leading-[1.05] tracking-[-0.02em] text-[#F7F4EC] sm:text-4xl">
+          What are we watching?
+        </h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#CDBF9F] sm:text-base">
+          Start with YouTube, or bring your own link or upload. We&apos;ll keep
+          everyone in sync.
+        </p>
+      </header>
 
-        {/* Centered Warm Sand Beige Room Launcher Card */}
-        <div className="w-full max-w-lg mt-4 sm:mt-5 text-left">
-          <Card glow tone="sand" className="p-4 sm:p-5">
-            {/* Pill Tab Switcher */}
-            <div className="grid grid-cols-2 p-1 bg-[#DFD2B4] rounded-full mb-3.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab('create')}
-                disabled={isLobbyBusy}
-                className={`py-2 px-3 font-semibold rounded-full transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:pointer-events-none ${
-                  activeTab === 'create'
-                    ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
-                    : 'text-[#173D30]/80 hover:text-[#102B23]'
-                }`}
-              >
-                <Tv className="w-3.5 h-3.5" />
-                <span>Create Room</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('join')}
-                disabled={isLobbyBusy}
-                className={`py-2 px-3 font-semibold rounded-full transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:pointer-events-none ${
-                  activeTab === 'join'
-                    ? 'bg-[#102B23] text-[#F7F4EC] shadow-sm'
-                    : 'text-[#173D30]/80 hover:text-[#102B23]'
-                }`}
-              >
-                <Users2 className="w-3.5 h-3.5" />
-                <span>Join Room</span>
-              </button>
-            </div>
-
-            {/* Create Room Form */}
-            {activeTab === 'create' && (
-              <form onSubmit={handleCreateRoom} className="space-y-3">
-                <Input
-                  label="Room Name"
-                  placeholder="e.g. Movie Night, YouTube Chill"
-                  value={roomTitle}
-                  onChange={(e) => setRoomTitle(e.target.value)}
-                  maxLength={50}
-                  disabled={isLobbyBusy}
-                  required
-                />
-                <Input
-                  label="Initial YouTube URL (Optional)"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  value={videoInput}
-                  onChange={(e) => setVideoInput(e.target.value)}
-                  error={createError}
-                  leftIcon={<Link2 className="w-4 h-4" />}
-                  helperText="Leave blank to paste a link, direct video URL, or upload a clip (up to 50MB) inside the room."
-                  disabled={isLobbyBusy}
-                />
-                <Button
-                  type="submit"
-                  size="lg"
-                  variant="primary"
-                  className="w-full mt-1"
-                  isLoading={navigatingAction === 'create'}
-                  disabled={isLobbyBusy}
-                  rightIcon={<ArrowRight className="w-4 h-4" />}
-                >
-                  {navigatingAction === 'create'
-                    ? createButtonStage.label
-                    : 'Create Watch Party'}
-                </Button>
-              </form>
-            )}
-
-            {/* Join Room Form */}
-            {activeTab === 'join' && (
-              <form onSubmit={handleJoinRoom} className="space-y-3">
-                <Input
-                  label="Room Code or Invitation Link"
-                  placeholder="e.g. SYNC-8492 or paste invite URL"
-                  value={joinCodeInput}
-                  onChange={(e) => setJoinCodeInput(e.target.value)}
-                  error={joinError}
-                  leftIcon={<Link2 className="w-4 h-4" />}
-                  helperText="Enter the 8-character room code or invite link (up to 4 viewers per room)."
-                  disabled={isLobbyBusy}
-                  autoFocus
-                />
-                <Button
-                  type="submit"
-                  size="lg"
-                  variant="primary"
-                  className="w-full mt-1"
-                  isLoading={navigatingAction === 'join'}
-                  disabled={isLobbyBusy}
-                  rightIcon={<ArrowRight className="w-4 h-4" />}
-                >
-                  {navigatingAction === 'join'
-                    ? joinButtonStage.label
-                    : 'Join Room Now'}
-                </Button>
-              </form>
-            )}
-
-            {/* Card Footer Status */}
-            <div className="pt-2.5 mt-3.5 border-t border-[#173D30]/12">
-              {isAuthenticated ? (
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-[#173D30]/80 truncate">
-                    Signed in as{' '}
-                    <strong className="font-semibold text-[#102B23]">
-                      {user.username || user.email}
-                    </strong>
+      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_336px] lg:items-start">
+        <div>
+          <section className="overflow-hidden rounded-2xl border border-[#E8DDC5]/14 bg-[#0B1E17] shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+            <button
+              type="button"
+              onClick={goToYouTube}
+              disabled={isLobbyBusy}
+              className="group block w-full text-left disabled:cursor-wait disabled:opacity-80"
+            >
+              <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                <div className="flex min-w-0 items-start gap-4">
+                  <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl bg-[#FF0000] shadow-[0_8px_24px_rgba(255,0,0,0.18)]">
+                    <YouTubeIcon className="h-9 w-12" />
                   </span>
-                  <span className="inline-flex items-center gap-1.5 text-[#15803D] font-semibold shrink-0">
-                    <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
-                    Ready to Host
-                  </span>
+                  <div className="min-w-0">
+                    <h2 className="font-serif text-3xl font-semibold leading-none tracking-tight text-[#F7F4EC]">
+                      YouTube
+                    </h2>
+                    <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-[#CDBF9F]">
+                      Search videos, build a shared line-up, and watch together with
+                      host-controlled playback.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#CDBF9F]/85">
+                      <span className="inline-flex items-center gap-1">
+                        <ListVideo className="h-3.5 w-3.5 text-[#B397FF]" />
+                        Shared queue
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Users2 className="h-3.5 w-3.5 text-[#B397FF]" />
+                        Up to 4 viewers
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Play className="h-3.5 w-3.5 text-[#B397FF]" />
+                        Host sync
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <p className="text-xs text-[#173D30]/80 text-center">
-                  Want to save your watch parties and identity?{' '}
-                  <Link
-                    href="/login"
-                    className="text-[#7235A8] hover:text-[#5B218F] font-semibold underline underline-offset-4"
-                  >
-                    Sign in or register
-                  </Link>
-                </p>
-              )}
-            </div>
-          </Card>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center self-end rounded-full border border-[#9670FF]/35 bg-[#9670FF]/10 text-[#E8DDC5] transition group-hover:border-[#9670FF]/60 group-hover:bg-[#9670FF]/20 group-hover:text-[#F7F4EC] sm:self-center">
+                  {isLobbyBusy ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-[#B397FF]" />
+                  ) : (
+                    <ArrowRight className="h-5 w-5" />
+                  )}
+                </span>
+              </div>
+            </button>
+            <p className="border-t border-[#E8DDC5]/10 px-4 py-2.5 text-[11px] leading-relaxed text-[#CDBF9F]/70">
+              YouTube is a trademark of Google LLC. Syncora is an independent watch-party
+              app and is not affiliated with YouTube.
+            </p>
+          </section>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <SecondarySource
+              title="Direct URL"
+              description="Paste an MP4, WebM, or stream link."
+              icon={<Link2 className="h-4 w-4" />}
+              onClick={() => setSetupMode('url')}
+              disabled={isLobbyBusy}
+            />
+            <SecondarySource
+              title="Local upload"
+              description="Create a room, then upload a clip."
+              icon={<Upload className="h-4 w-4" />}
+              onClick={() => setSetupMode('upload')}
+              disabled={isLobbyBusy}
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#E8DDC5]/10 pt-3">
+            <span className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#CDBF9F]/75">
+              Coming soon
+            </span>
+            <ComingSoonSource
+              icon={<Clapperboard className="h-3 w-3" />}
+              label="Netflix"
+            />
+            <ComingSoonSource
+              icon={<Play className="h-3 w-3" />}
+              label="Prime Video"
+            />
+          </div>
         </div>
 
-        {/* Recent Rooms & Saved Favorites Shelves */}
+        <aside className="space-y-3 lg:sticky lg:top-20">
+          <section className="rounded-2xl border border-[#CDBF9F]/70 bg-[#EDE2CA] p-4 text-[#102B23] shadow-[0_14px_36px_rgba(0,0,0,0.16)]">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#102B23] text-[#F7F4EC]">
+                <Users2 className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 className="font-serif text-xl font-semibold leading-none">
+                  Join a room
+                </h2>
+                <p className="mt-1 text-xs text-[#173D30]/85">
+                  Have an invite link or room code?
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleJoinRoom} className="mt-3 space-y-2.5">
+              <Input
+                id="join-room-input"
+                placeholder="Room code or invite link"
+                value={joinCodeInput}
+                onChange={(event) => setJoinCodeInput(event.target.value)}
+                error={joinError}
+                leftIcon={<Link2 className="h-4 w-4" />}
+                disabled={isLobbyBusy}
+                aria-label="Room code or invite link"
+                className="bg-[#F7F4EC]/70"
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                isLoading={navigatingAction === 'join'}
+                disabled={isLobbyBusy}
+                rightIcon={<ArrowRight className="h-4 w-4" />}
+                className="w-full rounded-full"
+              >
+                {navigatingAction === 'join' ? joinButtonStage.label : 'Join Room'}
+              </Button>
+            </form>
+
+            <div className="mt-3 border-t border-[#173D30]/15 pt-2.5 text-xs leading-relaxed">
+              {isAuthenticated ? (
+                <span className="text-[#173D30]/90">
+                  Signed in as{' '}
+                  <strong className="font-semibold text-[#102B23]">
+                    {user.username || user.email}
+                  </strong>
+                </span>
+              ) : (
+                <span className="text-[#173D30]/90">
+                  Want to keep your rooms?{' '}
+                  <Link
+                    href="/login"
+                    className="font-semibold text-[#7235A8] underline underline-offset-4 hover:text-[#5B218F]"
+                  >
+                    Sign in
+                  </Link>
+                </span>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[#E8DDC5]/12 bg-[#173D30]/45 p-4">
+            <p className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#CDBF9F]/75">
+              Built for a shared screen
+            </p>
+            <ul className="mt-3 space-y-2.5 text-xs leading-relaxed text-[#CDBF9F]/90">
+              <li className="flex items-start gap-2">
+                <Play className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B397FF]" />
+                The host controls play, pause, and seek for everyone.
+              </li>
+              <li className="flex items-start gap-2">
+                <ListVideo className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B397FF]" />
+                Everyone can add videos to the shared queue.
+              </li>
+              <li className="flex items-start gap-2">
+                <MessageCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B397FF]" />
+                Chat and voice stay beside the screening.
+              </li>
+            </ul>
+          </section>
+        </aside>
+      </div>
+
+      <div className="mx-auto mt-2 flex w-full max-w-5xl flex-col">
         <RecentRoomsSection
           isExternalNavigating={isLobbyBusy}
           onStartNavigation={() => setNavigatingAction('shelf')}
@@ -305,8 +387,16 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Bottom 3-Column Feature Pillars */}
-      <FeaturePillars />
+      {setupMode && (
+        <SourceSetupModal
+          key={setupMode}
+          mode={setupMode}
+          isOpen
+          isBusy={isCreatingSource}
+          onClose={() => setSetupMode(null)}
+          onConfirm={handleCreateFromModal}
+        />
+      )}
     </div>
   );
 }

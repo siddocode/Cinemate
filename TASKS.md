@@ -246,3 +246,55 @@
   - Clean screening telemetry bar under video showing source status (`YouTube · Synced`).
   - Verified with `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors, 0 warnings), full test suite (`86/86` tests passing), and production build (`npm run build`).
 
+---
+
+## Phase 16 — YouTube-First Source Selection & Shared Watch Queue ✅
+- [x] Redesign `src/app/page.tsx` into a source-selection screen (YouTube featured, Direct URL, Local Upload, Netflix/Prime coming soon) while retaining join-by-code, recent hosted rooms, favorites, `fetchDashboardData`, and `useLoadingStages`.
+- [x] Add `SourceSetupModal.tsx` for Direct URL / Local Upload room creation and route flows into `/room/{code}?create=1&source=url|upload`.
+- [x] Add server-only YouTube Data API v3 integration: `youtube.types.ts`, `youtubeService.ts` (search/metadata, ISO-8601 duration parsing, embeddable filtering, caches, typed quota/auth errors), `youtubeRateLimit.ts` (20 req/min/IP), and authenticated `/api/youtube/search` + `/api/youtube/videos` routes. Document `YOUTUBE_API_KEY` in `.env.example`; keep the real key only in `.env.local`.
+- [x] Add `YouTubeBrowser.tsx` and `src/app/browse/page.tsx` with debounced search, quick chips, loading skeletons, quota/config messaging, paste-link fallback, YouTube attribution, and a max-20 multi-select line-up.
+- [x] Add `room_queue_items` schema, indexes, member RLS, `can_control_room_queue` (kicked-user exclusion), atomic `add_room_queue_item` / `reorder_room_queue` RPCs, position-only update guard, realtime publication, and `REPLICA IDENTITY FULL` in `supabase/migrations/012_room_queue.sql` + `supabase/full_setup.sql`; update `database.types.ts`.
+- [x] Add queue client/realtime: `RoomQueueItem` / `QueueVideoInput`, `queueService.ts`, `pendingQueue.ts`, `useRoomQueue.ts`, and queue `postgres_changes` wiring in `useRoom.ts` / `roomRealtimeBus.ts`.
+- [x] Add in-room queue UI (`RoomQueuePanel.tsx`, `YouTubeQueueModal.tsx`), header queue count/trigger, pending-queue seeding, `openUpload`, `initialVideoType`, and host-only auto-next in `RoomView.tsx` / `room/[code]/page.tsx`.
+- [x] Add playback resilience: adapter `getLastErrorCode()`, `youtubeErrors.ts`, friendly error overlay with “Watch on YouTube” / “Choose another video”, `autoPlayOnLoad` + `onEnded` in `UniversalPlayer.tsx`, and custom `YouTubeIcon.tsx`.
+- [x] Add regression tests (`tests/youtube-and-watch-queue.test.mjs`) and update `tests/room-session-rpc.test.mjs`; verified `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors/warnings), `npm test` (96/96 passing), and `npm run build`.
+- [x] Applied `supabase/migrations/012_room_queue.sql` in Supabase; verified `room_queue_items` + queue RPCs via PostgREST and confirmed `YOUTUBE_API_KEY` returns live YouTube Data API v3 search results.
+- [x] Live authenticated smoke test: search on `/browse`, start a room from the line-up, add/remove/reorder queued videos across two clients, verify Realtime sync + host-only auto-next, and test an embed-disabled video fallback.
+
+
+---
+
+## Phase 17 — YouTube-Inspired Browse & Source UI Redesign ✅
+- [x] Rework `src/app/page.tsx`: YouTube-primary panel with recognizable branding and a prominent “Explore YouTube” action, compact Direct URL / Local Upload rows, subtle Netflix / Prime Video “Coming soon” pills, compact join rail, and secondary recent/favorites shelves. Remove the old source-card grid and marketing pillars.
+- [x] Rework `YouTubeBrowser.tsx`: prominent pill search, category chips, `/` search shortcut, larger unboxed thumbnail grid, channel/duration metadata, clear Add-to-queue and selected states, inline link fallback, “Show more” pagination, and a `YouTubeBrowserHandle` for external search control.
+- [x] Rework `src/app/browse/page.tsx`: compact YouTube-style top bar, collapsible desktop category sidebar, dominant responsive grid, collapsible desktop line-up panel, mobile line-up drawer + sticky review bar, and accessible room creation via the line-up form.
+- [x] Update `YouTubeIcon.tsx` to the familiar red play mark; retain “in Syncora,” YouTube attribution, and non-affiliation copy; hide the footer on `/browse`.
+- [x] Preserve all search/API/queue/Supabase/RLS/RPC/Realtime/playback behavior; verify `npx tsc --noEmit`, `npm run lint`, `npm test` (96/96), and `npm run build`.
+- [x] Authenticated visual QA at desktop/tablet/mobile sizes and live two-browser search → line-up → room → queue sync → auto-next smoke test.
+
+---
+
+## Phase 18 — CTA Simplification, Text Readability & Dark Modal Redesign ✅
+- [x] Simplify YouTube card CTA in `src/app/page.tsx`: remove faux search row and “Explore YouTube” button; keep whole-card button with circular arrow as sole affordance (all breakpoints, purple tint, spinner while busy); drop create-stage labels from the card.
+- [x] Raise home-page text size/contrast: eyebrow, subtitle, card copy, badges, trademark, “Coming soon,” secondary-source descriptions, join-rail copy, right-rail bullets, RecentRooms/Favorites metadata, Navbar badge/email, Input placeholder/label/helper, YouTubeBrowser meta/empty/footer — all ≥11–12px with ≥75–90% opacity.
+- [x] Convert `Modal.tsx` shell to dark `#0B1E17` (title/description/close/divider light); restyle `Button.ghostSand` for dark surfaces; raise `Badge.default` to `#173D30`; pass `Input tone="dark"` at all modal call sites.
+- [x] Add `tone` prop to `AuthFormContent` (default `sand` for `/auth` page; `AuthModal` passes `dark`) covering tabs, alerts, links, eye toggle, footer.
+- [x] Restyle `ChangeVideoModal` (tab switcher, hard/soft alerts, dropzone, progress bar, error) and `SourceSetupModal` (info box, inputs) for dark surfaces.
+- [x] Restyle `RoomParticipantsModal` (solid sand room-code pill + secondary Copy Invite, roster headers, badge sizes, footer) and `YouTubeQueueModal` (selected panel, Clear, error, divider) for dark surfaces.
+- [x] Verify `npx tsc --noEmit`, `npm run lint`, `npm test` (96/96), and `npm run build`.
+- [ ] Visual QA: home hero/card CTA, all six modals, and queue browser empty/results states at desktop/tablet/mobile.
+
+---
+
+## Phase 19 — Persistent Add Badge & Room-Wide Font Scale ✅
+- [x] `YouTubeBrowser.tsx`: remove bottom “Add to queue” link; add always-visible thumbnail top-right pill (`+ Add` dark glass / `✓ Added` purple `#9670FF`); keep hover overlay + top-left check; shared by `/browse` and `YouTubeQueueModal`.
+- [x] Raise shared scales: `Button` `sm`→`text-sm px-3.5 py-2`, `lg`→`text-base`; `Badge` default→`text-xs`; `Input` label/error/helper→`text-[13px]`.
+- [x] ChatContainer: remove desktop size inversions, message body 14px on all breakpoints, meta/timestamps/receipts ≥11–12px @ ≥85% opacity, typing/system ≥13px, placeholder opacity 65%.
+- [x] RoomQueuePanel: section labels 10→12px, item titles 11→12px, now-playing title 14px, empty-state/footer ≥12px, index/meta opacity ≥80%.
+- [x] RoomHeader: voice status/full/join pills, room-code pill, countdown, badges → ≥12px; strip `text-[11px]` Badge/Button overrides; queue count 10→11px.
+- [x] RoomView: remove telemetry/queue-pill desktop inversions, 9px queue count → 11px, voice-active label 12px, empty-state copy 13px.
+- [x] UniversalPlayer: remove badge `sm:text-[11px]` inversions, unmute/toast/error copy 13–14px, CTA `text-sm`, timecode/resync 13px.
+- [x] VoiceCallBar + RoomLoadingState: 10→12px status/meta text, opacity ≥85%.
+- [x] Modals (ChangeVideo, Participants, YouTubeQueue): tabs/alerts/meta 13–12px; strip Badge/Button size overrides; Navbar/AuthForm small text raised; delete Button call-site `text-xs` overrides (Navbar, VoiceCallBar, RoomHeader, RoomView, FavoritesSection).
+- [x] Verify `npx tsc --noEmit`, `npm run lint`, `npm test` (96/96), and `npm run build`.
+- [x] Visual QA: room header/chat/queue/player/voice bar, browse & queue modal add badges, button sizing at desktop/tablet/mobile.

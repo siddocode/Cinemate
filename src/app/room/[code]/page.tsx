@@ -14,9 +14,21 @@ async function RoomContent({ params, searchParams }: RoomPageProps) {
   ]);
 
   const roomCode = resolvedParams.code;
-  const videoId = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : undefined;
+  const source = resolvedSearchParams.source;
+  const initialVideoType =
+    source === 'url' || source === 'upload' || source === 'youtube'
+      ? source
+      : 'youtube';
+  const videoId =
+    typeof resolvedSearchParams.v === 'string'
+      ? resolvedSearchParams.v
+      : typeof resolvedSearchParams.video === 'string'
+      ? resolvedSearchParams.video
+      : undefined;
   const title = typeof resolvedSearchParams.title === 'string' ? resolvedSearchParams.title : undefined;
   const allowCreate = resolvedSearchParams.create === '1';
+  const seedQueue = resolvedSearchParams.seedQueue === '1';
+  const openUpload = resolvedSearchParams.openUpload === '1';
 
   return (
     <RoomView
@@ -24,6 +36,9 @@ async function RoomContent({ params, searchParams }: RoomPageProps) {
       initialVideoId={videoId}
       initialTitle={title}
       allowCreate={allowCreate}
+      initialVideoType={initialVideoType}
+      seedQueue={seedQueue}
+      openUpload={openUpload}
     />
   );
 }

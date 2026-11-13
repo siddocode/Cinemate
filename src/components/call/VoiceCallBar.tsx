@@ -162,7 +162,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                 type="button"
                 onClick={onJoin}
                 disabled={isBusy}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#4B2623] hover:bg-[#5E2F2B] text-[11px] font-medium text-[#F7F4EC] cursor-pointer transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#4B2623] hover:bg-[#5E2F2B] text-xs font-medium text-[#F7F4EC] cursor-pointer transition-colors disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isJoining ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -231,7 +231,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
             onClick={onJoin}
             isLoading={isJoining}
             disabled={isBusy}
-            className="h-8 sm:h-7 px-3 text-xs rounded-full shrink-0"
+            className="h-8 sm:h-7 px-3 rounded-full shrink-0"
             leftIcon={<PhoneCall className="w-3.5 h-3.5" />}
           >
             {isJoining ? 'Joining…' : 'Join Voice Call'}
@@ -292,7 +292,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   size="sm"
                   onClick={onToggleMute}
                   disabled={isBusy}
-                  className="h-8 sm:h-7 px-3 text-xs rounded-full"
+                  className="h-8 sm:h-7 px-3 rounded-full"
                   leftIcon={
                     isMuted ? (
                       <MicOff className="w-3.5 h-3.5" />
@@ -312,7 +312,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                 onClick={onLeave}
                 isLoading={isLeaving}
                 disabled={isJoining || isLeaving}
-                className="h-8 sm:h-7 px-3 text-xs rounded-full"
+                className="h-8 sm:h-7 px-3 rounded-full"
                 leftIcon={<PhoneOff className="w-3.5 h-3.5" />}
                 title={isHost ? 'End voice call for everyone' : 'Leave voice call'}
                 aria-label={isHost ? 'End voice call for everyone' : 'Leave voice call'}
@@ -361,7 +361,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
 
                     {/* State badge / indicator */}
                     {isSpeaking && (
-                      <span className="flex items-center gap-1 text-[10px] font-mono font-medium text-[#7AD3A8] shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-mono font-medium text-[#7AD3A8] shrink-0">
                         <span className="flex items-end gap-0.5 h-2.5">
                           <span className="w-0.5 h-1.5 bg-[#7AD3A8] rounded-full animate-pulse" />
                           <span className="w-0.5 h-2.5 bg-[#7AD3A8] rounded-full animate-pulse" />
@@ -372,14 +372,14 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                     )}
 
                     {isListening && (
-                      <span className="flex items-center gap-1 text-[10px] font-mono text-[#CDBF9F]/70 shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-mono text-[#CDBF9F]/85 shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8]/60" />
                         <span>Listening</span>
                       </span>
                     )}
 
                     {isMuted && (
-                      <span className="flex items-center gap-1 text-[10px] font-mono text-[#F87171] shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-mono text-[#F87171] shrink-0">
                         <MicOff className="w-3 h-3 text-[#F87171]" />
                         <span>Muted</span>
                       </span>
@@ -398,7 +398,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
               onClick={() => void handleUnlockAudio()}
               isLoading={isUnlockingAudio}
               disabled={isBusy}
-              className="w-full h-8 text-xs rounded-lg"
+              className="w-full h-8 rounded-lg"
               leftIcon={<Volume2 className="w-3.5 h-3.5" />}
             >
               {isUnlockingAudio ? 'Enabling audio…' : 'Tap to enable partner audio'}
@@ -415,7 +415,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   <button
                     type="button"
                     onClick={() => setHideHeadphoneTip(true)}
-                    className="text-[#CDBF9F]/55 hover:text-[#F7F4EC] cursor-pointer shrink-0"
+                    className="text-[#CDBF9F]/85 hover:text-[#F7F4EC] cursor-pointer shrink-0"
                     aria-label="Dismiss headphones tip"
                   >
                     <X className="w-3.5 h-3.5" />

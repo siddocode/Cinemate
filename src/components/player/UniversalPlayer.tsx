@@ -12,6 +12,8 @@ import {
   RotateCcw,
   Film,
   Loader2,
+  AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 import { IVideoPlayerAdapter, VideoSourceType } from '@/core/types/player.types';
 import { YouTubePlayerAdapter } from '@/core/adapters/YouTubePlayerAdapter';
@@ -22,6 +24,11 @@ import { formatTime } from '@/lib/utils/time';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils/cn';
+import {
+  describePlaybackError,
+  getYouTubeWatchUrl,
+  PlaybackErrorInfo,
+} from '@/lib/utils/youtubeErrors';
 
 interface InitialPlaybackSnapshot {
   position: number;
@@ -44,6 +51,10 @@ interface UniversalPlayerProps {
   isInVoiceCall?: boolean;
   isVoiceAutoDuckEnabled?: boolean;
   isVoiceSpeaking?: boolean;
+  autoPlayOnLoad?: boolean;
+  onAutoPlayHandled?: () => void;
+  onEnded?: () => void;
+  onPlayerError?: (code: number | null) => void;
   className?: string;
 }
 
@@ -58,9 +69,14 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   initialPlayback,
   onPersistSnapshot,
   onVideoMismatch,
+  onChangeVideoClick,
   isInVoiceCall = false,
   isVoiceAutoDuckEnabled = true,
   isVoiceSpeaking = false,
+  autoPlayOnLoad = false,
+  onAutoPlayHandled,
+  onEnded,
+  onPlayerError,
   className,
 }) => {
   const { user } = useSession();
@@ -80,9 +96,30 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   const [viewerAlert, setViewerAlert] = useState<string | null>(null);
   const [autoplayNotice, setAutoplayNotice] = useState<'muted' | 'blocked' | null>(null);
   const [isUnblocking, setIsUnblocking] = useState(false);
+  const [playerError, setPlayerError] = useState<PlaybackErrorInfo | null>(null);
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoPlayOnLoadRef = useRef(autoPlayOnLoad);
+  const onAutoPlayHandledRef = useRef(onAutoPlayHandled);
+  const onEndedRef = useRef(onEnded);
+  const onPlayerErrorRef = useRef(onPlayerError);
   const hasControl = canControl ?? isHost;
+
+  useEffect(() => {
+    autoPlayOnLoadRef.current = autoPlayOnLoad;
+  }, [autoPlayOnLoad]);
+
+  useEffect(() => {
+    onAutoPlayHandledRef.current = onAutoPlayHandled;
+  }, [onAutoPlayHandled]);
+
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
+  useEffect(() => {
+    onPlayerErrorRef.current = onPlayerError;
+  }, [onPlayerError]);
 
   // Synchronization engine integration
   const { isSynced, driftSeconds, requestSync } = useSyncEngine({
@@ -153,6 +190,19 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
       setAutoplayNotice('blocked');
     });
 
+    playerAdapter.on('ENDED', () => {
+      if (!isMounted) return;
+      setIsPlaying(false);
+      onEndedRef.current?.();
+    });
+
+    playerAdapter.on('ERROR', () => {
+      if (!isMounted) return;
+      const code = playerAdapter.getLastErrorCode?.() ?? null;
+      setPlayerError(describePlaybackError(code, videoType === 'youtube'));
+      onPlayerErrorRef.current?.(code);
+    });
+
     playerAdapter
       .initialize(containerRef.current, videoUrl)
       .then(() => {
@@ -164,6 +214,11 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
         const initialState = playerAdapter.getPlaybackState();
         setDuration(initialState.duration);
         setCurrentTime(initialState.currentTime);
+
+        if (autoPlayOnLoadRef.current) {
+          void playerAdapter.play();
+          onAutoPlayHandledRef.current?.();
+        }
       })
       .catch((err) => {
         console.warn('[Syncora] Player initialization error:', err);
@@ -177,6 +232,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
       setCurrentTime(0);
       setDuration(0);
       setAutoplayNotice(null);
+      setPlayerError(null);
     };
   }, [videoUrl, videoType]);
 
@@ -355,7 +411,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
         <button
           type="button"
           onClick={toggleMute}
-          className="absolute top-12 sm:top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[#EDE2CA] hover:bg-[#F7F4EC] text-[#102B23] text-xs font-semibold px-4 py-2 rounded-full shadow-lg border border-[#CDBF9F] cursor-pointer transition-colors whitespace-nowrap"
+          className="absolute top-12 sm:top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[#EDE2CA] hover:bg-[#F7F4EC] text-[#102B23] text-[13px] font-semibold px-4 py-2 rounded-full shadow-lg border border-[#CDBF9F] cursor-pointer transition-colors whitespace-nowrap"
         >
           <VolumeX className="w-3.5 h-3.5 text-[#7235A8]" />
           <span>Playing muted — Click to Unmute</span>
@@ -367,7 +423,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
           type="button"
           onClick={() => void handleUserUnblockPlayback()}
           disabled={isUnblocking}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex items-center gap-2.5 bg-[#7235A8] hover:bg-[#8342BE] text-[#F7F4EC] text-xs sm:text-sm font-semibold px-5 py-3 rounded-full shadow-xl border border-[#9670FF]/50 cursor-pointer transition-colors disabled:opacity-70 disabled:pointer-events-none"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex items-center gap-2.5 bg-[#7235A8] hover:bg-[#8342BE] text-[#F7F4EC] text-sm font-semibold px-5 py-3 rounded-full shadow-xl border border-[#9670FF]/50 cursor-pointer transition-colors disabled:opacity-70 disabled:pointer-events-none"
         >
           {isUnblocking ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -380,8 +436,46 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
 
       {/* Viewer Floating Alert */}
       {viewerAlert && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#EDE2CA] border border-[#CDBF9F] text-[#102B23] font-medium text-xs px-4 py-2 rounded-full shadow-xl cinema-enter max-w-[90%] text-center">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#EDE2CA] border border-[#CDBF9F] text-[#102B23] font-medium text-[13px] px-4 py-2 rounded-full shadow-xl cinema-enter max-w-[90%] text-center">
           {viewerAlert}
+        </div>
+      )}
+
+      {playerError && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#071611]/92 p-4 text-center">
+          <div className="max-w-sm w-full rounded-2xl border border-[#E87A70]/35 bg-[#1A1211] p-5 shadow-2xl cinema-enter">
+            <div className="w-10 h-10 rounded-xl bg-[#3A1E1C] border border-[#E87A70]/35 text-[#F2B8B2] flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <h3 className="font-serif text-xl font-semibold text-[#F7F4EC]">
+              {playerError.title}
+            </h3>
+            <p className="text-sm text-[#CDBF9F] mt-1.5 leading-relaxed">
+              {playerError.message}
+            </p>
+            <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2">
+              {videoType === 'youtube' && getYouTubeWatchUrl(videoUrl) && (
+                <a
+                  href={getYouTubeWatchUrl(videoUrl) || '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#E8DDC5]/25 px-3 py-2 text-[13px] font-semibold text-[#E8DDC5] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/45 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Watch on YouTube
+                </a>
+              )}
+              {hasControl && onChangeVideoClick && (
+                <button
+                  type="button"
+                  onClick={onChangeVideoClick}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#7235A8] hover:bg-[#8342BE] px-3 py-2 text-[13px] font-semibold text-[#F7F4EC] transition-colors"
+                >
+                  Choose another video
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -404,7 +498,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
             <Badge
               variant="purple"
               dot
-              className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC] text-xs sm:text-[11px]"
+              className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC]"
             >
               {isHost
                 ? 'Host Authority'
@@ -415,7 +509,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
 
             <Badge
               variant="default"
-              className="bg-[#0E281F]/88 border-[#E8DDC5]/20 text-[#CDBF9F] text-xs sm:text-[11px] hidden sm:inline-flex gap-1"
+              className="bg-[#0E281F]/88 border-[#E8DDC5]/20 text-[#CDBF9F] hidden sm:inline-flex gap-1"
             >
               <Film className="w-3 h-3 text-[#E8DDC5]" />
               {videoType === 'youtube' ? 'YouTube' : 'Personal Stream'}
@@ -425,7 +519,6 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
               <Badge
                 variant={isSynced ? 'success' : 'warning'}
                 dot
-                className="text-xs sm:text-[11px]"
               >
                 {isSynced ? 'In Sync' : `Drift ${driftSeconds.toFixed(1)}s`}
               </Badge>
@@ -437,7 +530,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
               <button
                 type="button"
                 onClick={requestSync}
-                className="flex items-center gap-1.5 text-xs font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 text-[13px] font-medium text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#0E281F]/90 hover:bg-[#173D30] px-3 py-1 rounded-full border border-[#E8DDC5]/22 hover:border-[#9670FF]/60 transition-colors cursor-pointer shrink-0"
                 title="Resync video with host"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-[#9670FF]" />
@@ -497,7 +590,7 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
           </div>
 
           {/* Action Buttons & Timecode Row */}
-          <div className="flex items-center justify-between text-xs text-[#F7F4EC]">
+          <div className="flex items-center justify-between text-[13px] text-[#F7F4EC]">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -512,9 +605,9 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
                 )}
               </button>
 
-              <div className="font-mono text-xs tabular-nums text-[#E8DDC5]">
+              <div className="font-mono text-[13px] tabular-nums text-[#E8DDC5]">
                 <span>{formatTime(currentTime)}</span>
-                <span className="text-[#CDBF9F]/45 mx-1.5">/</span>
+                <span className="text-[#CDBF9F]/70 mx-1.5">/</span>
                 <span className="text-[#CDBF9F]">{formatTime(duration)}</span>
               </div>
             </div>

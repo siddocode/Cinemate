@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   Tv,
@@ -10,6 +10,7 @@ import {
   UserX,
   Volume2,
   X,
+  ListVideo,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { useSession } from '@/hooks/useSession';
@@ -17,18 +18,27 @@ import { useCall } from '@/hooks/useCall';
 import { RoomHeader } from './RoomHeader';
 import { ChangeVideoModal } from './ChangeVideoModal';
 import { RoomParticipantsModal } from './RoomParticipantsModal';
+import { RoomQueuePanel } from './RoomQueuePanel';
+import { YouTubeQueueModal } from './YouTubeQueueModal';
 import { RoomLoadingState } from './RoomLoadingState';
 import { VoiceCallBar } from '@/components/call/VoiceCallBar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { UniversalPlayer } from '@/components/player/UniversalPlayer';
 import { ChatContainer } from '@/components/chat/ChatContainer';
+import { useRoomQueue } from '@/hooks/useRoomQueue';
+import { RoomQueueItem } from '@/core/types/room.types';
+import { VideoSourceType } from '@/core/types/player.types';
+import { consumePendingQueue } from '@/lib/utils/pendingQueue';
 
 interface RoomViewProps {
   roomCode: string;
   initialVideoId?: string;
   initialTitle?: string;
   allowCreate?: boolean;
+  initialVideoType?: VideoSourceType;
+  seedQueue?: boolean;
+  openUpload?: boolean;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -36,6 +46,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
   initialVideoId,
   initialTitle,
   allowCreate = false,
+  initialVideoType = 'youtube',
+  seedQueue = false,
+  openUpload = false,
 }) => {
   const { user } = useSession();
   const {
@@ -65,13 +78,30 @@ export const RoomView: React.FC<RoomViewProps> = ({
     closeRoom,
     channel,
     initialChatHistory,
-  } = useRoom(roomCode, initialTitle, allowCreate, initialVideoId);
+  } = useRoom(roomCode, initialTitle, allowCreate, initialVideoId, initialVideoType);
+
+  const {
+    items: queueItems,
+    isLoading: isQueueLoading,
+    error: queueError,
+    busyItemId: queueBusyItemId,
+    addItems: addQueueItems,
+    removeItem: removeQueueItem,
+    moveItem: moveQueueItem,
+  } = useRoomQueue(room?.id);
 
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
+  const [changeVideoInitialTab, setChangeVideoInitialTab] = useState<VideoSourceType>('youtube');
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [isYouTubeQueueOpen, setIsYouTubeQueueOpen] = useState(false);
   const [isVoiceAutoDuckEnabled, setIsVoiceAutoDuckEnabled] = useState(true);
+  const [autoPlayNext, setAutoPlayNext] = useState(false);
+  const [nowPlayingTitle, setNowPlayingTitle] = useState<string | null>(null);
   const hasLoadedInitialVideo = useRef(false);
+  const seededQueueRef = useRef(false);
+  const openedUploadRef = useRef(false);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const voiceCall = useCall({
@@ -85,13 +115,94 @@ export const RoomView: React.FC<RoomViewProps> = ({
     audioRef: voiceAudioRef,
   });
 
+  const openChangeVideo = useCallback((tab: VideoSourceType = 'youtube') => {
+    setChangeVideoInitialTab(tab);
+    setIsChangeVideoOpen(true);
+  }, []);
+
   // If initial video was provided in query params and room has none, update it
   useEffect(() => {
     if (room && initialVideoId && !room.videoUrl && isHost && !hasLoadedInitialVideo.current) {
       hasLoadedInitialVideo.current = true;
-      updateVideo(initialVideoId);
+      void updateVideo(initialVideoId, initialVideoType);
     }
-  }, [room, initialVideoId, isHost, updateVideo]);
+  }, [room, initialVideoId, initialVideoType, isHost, updateVideo]);
+
+  // Seed the shared queue with the line-up selected on /browse (host only).
+  useEffect(() => {
+    if (
+      !room ||
+      !isHost ||
+      !seedQueue ||
+      seededQueueRef.current ||
+      isQueueLoading
+    ) {
+      return;
+    }
+
+    seededQueueRef.current = true;
+    const pending = consumePendingQueue(room.code);
+    const remaining = pending.filter((item) => {
+      const source = item.videoId || item.videoUrl || '';
+      return source && source !== room.videoUrl;
+    });
+
+    if (remaining.length > 0) {
+      void addQueueItems(remaining).catch((err) => {
+        console.warn('[Syncora] Could not seed the shared queue:', err);
+      });
+    }
+  }, [room, isHost, seedQueue, isQueueLoading, addQueueItems]);
+
+  // Open the upload tab directly when arriving from the Local Upload source card.
+  useEffect(() => {
+    if (
+      !room ||
+      !openUpload ||
+      !canControl ||
+      openedUploadRef.current ||
+      isLoading
+    ) {
+      return;
+    }
+    openedUploadRef.current = true;
+    openChangeVideo('upload');
+  }, [room, openUpload, canControl, isLoading, openChangeVideo]);
+
+  const playQueueItem = useCallback(
+    async (item: RoomQueueItem) => {
+      if (!canControl) return;
+      setNowPlayingTitle(item.title);
+      setAutoPlayNext(true);
+      await updateVideo(item.videoUrl || item.videoId, item.videoType);
+      await removeQueueItem(item.id);
+    },
+    [canControl, updateVideo, removeQueueItem]
+  );
+
+  const handleQueueAdd = useCallback(
+    async (videos: { videoId: string; title: string; channelTitle: string; thumbnailUrl: string; durationSeconds: number }[]) => {
+      await addQueueItems(
+        videos.map((video) => ({
+          videoId: video.videoId,
+          videoType: 'youtube' as const,
+          title: video.title,
+          channelTitle: video.channelTitle,
+          thumbnailUrl: video.thumbnailUrl,
+          durationSeconds: video.durationSeconds,
+        }))
+      );
+    },
+    [addQueueItems]
+  );
+
+  const handleVideoEnded = useCallback(() => {
+    if (!canControl) return;
+    const next = queueItems[0];
+    if (next) {
+      void playQueueItem(next);
+    }
+  }, [canControl, queueItems, playQueueItem]);
 
   // Loading Screen
   if (isLoading) {
@@ -110,7 +221,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
               <h2 className="font-serif text-2xl font-semibold text-[#102B23]">
                 Removed from Screening Room
               </h2>
-              <p className="text-xs text-[#173D30]/75 mt-1.5 leading-relaxed">
+              <p className="text-[13px] text-[#173D30]/85 mt-1.5 leading-relaxed">
                 {kickedMessage || 'You have been removed from this room by the host.'} If you rejoin later, your account is limited to view-only access (no Co-Host or playback controls).
               </p>
             </div>
@@ -150,7 +261,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
             <h2 className="font-serif text-2xl font-semibold text-[#102B23]">
               Screening Room Closed
             </h2>
-            <p className="text-xs text-[#173D30]/75 mt-1.5 leading-relaxed">
+            <p className="text-[13px] text-[#173D30]/85 mt-1.5 leading-relaxed">
               {roomClosedMessage || 'The host has left and closed this screening room.'}
             </p>
           </div>
@@ -181,7 +292,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
             <h2 className="font-serif text-2xl font-semibold text-[#102B23]">
               Screening Room Unavailable
             </h2>
-            <p className="text-xs text-[#173D30]/75 mt-1.5 leading-relaxed">
+            <p className="text-[13px] text-[#173D30]/85 mt-1.5 leading-relaxed">
               {error || 'The requested watch room could not be loaded or is no longer active.'}
             </p>
           </div>
@@ -263,6 +374,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onCloseRoom={isHost ? closeRoom : undefined}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen(true)}
+        queueCount={queueItems.length}
+        onOpenQueue={() => setIsQueueOpen(true)}
         voiceCall={{
           status: voiceCall.status,
           isInCall: voiceCall.isInCall,
@@ -348,7 +461,10 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 }}
                 onPersistSnapshot={persistPlaybackSnapshot}
                 onVideoMismatch={applyRemoteVideo}
-                onChangeVideoClick={() => setIsChangeVideoOpen(true)}
+                onChangeVideoClick={() => openChangeVideo('youtube')}
+                autoPlayOnLoad={autoPlayNext}
+                onAutoPlayHandled={() => setAutoPlayNext(false)}
+                onEnded={handleVideoEnded}
                 isInVoiceCall={voiceCall.isInCall}
                 isVoiceAutoDuckEnabled={isVoiceAutoDuckEnabled}
                 isVoiceSpeaking={voiceCall.isLocalSpeaking || voiceCall.isPeerSpeaking}
@@ -378,8 +494,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
                     <Button
                       variant="primary"
                       size="sm"
-                      className="mt-4 sm:mt-5 text-xs sm:text-sm"
-                      onClick={() => setIsChangeVideoOpen(true)}
+                      className="mt-4 sm:mt-5"
+                      onClick={() => openChangeVideo('youtube')}
                       leftIcon={<Tv className="w-4 h-4" />}
                     >
                       Choose or Upload Video
@@ -390,7 +506,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
             )}
 
             {/* Streamlined screening telemetry (Joiners and Upload / URL consolidated in RoomHeader to eliminate duplicates) */}
-            <div className="mt-2 shrink-0 flex items-center justify-between gap-3 text-xs sm:text-[11px] text-[#CDBF9F]/85 px-1">
+            <div className="mt-2 shrink-0 flex items-center justify-between gap-3 text-xs text-[#CDBF9F]/85 px-1">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] shrink-0" />
                 <span className="font-mono uppercase tracking-[0.12em] text-[#CDBF9F] truncate">
@@ -402,12 +518,27 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 </span>
               </div>
 
-              {voiceCall.isInCall && (
-                <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#7AD3A8]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] animate-pulse" />
-                  <span>Voice Active ({voiceCall.participants.length})</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsQueueOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#E8DDC5]/18 bg-[#102B23]/80 px-2.5 py-1 text-xs font-semibold text-[#CDBF9F] hover:border-[#9670FF]/50 hover:text-[#F7F4EC] transition-colors cursor-pointer"
+                  aria-label="Open shared watch queue"
+                >
+                  <ListVideo className="w-3.5 h-3.5 text-[#9670FF]" />
+                  <span>Queue</span>
+                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-[#9670FF]/90 px-1 font-mono text-[11px] font-bold text-[#0B1E18]">
+                    {queueItems.length}
+                  </span>
+                </button>
+
+                {voiceCall.isInCall && (
+                  <div className="hidden sm:flex items-center gap-1.5 font-mono text-xs text-[#7AD3A8]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] animate-pulse" />
+                    <span>Voice Active ({voiceCall.participants.length})</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -441,6 +572,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         roomId={room.id}
         currentVideoUrl={room.videoUrl}
         onSelectVideo={updateVideo}
+        initialTab={changeVideoInitialTab}
       />
 
       {/* Room Participants & Playback Delegation Modal */}
@@ -456,6 +588,34 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onKickMember={kickMember}
         onToggleGuestControl={toggleGuestControl}
         onToggleGuestCall={toggleGuestCall}
+      />
+
+      <RoomQueuePanel
+        isOpen={isQueueOpen}
+        onClose={() => setIsQueueOpen(false)}
+        items={queueItems}
+        currentVideoUrl={room.videoUrl}
+        currentVideoType={room.videoType}
+        nowPlayingTitle={nowPlayingTitle}
+        canControl={canControl}
+        currentUserId={user.id}
+        members={members}
+        isLoading={isQueueLoading}
+        error={queueError}
+        busyItemId={queueBusyItemId}
+        onPlay={(item) => void playQueueItem(item)}
+        onRemove={(item) => void removeQueueItem(item.id)}
+        onMove={(item, direction) => void moveQueueItem(item.id, direction)}
+        onAddVideos={() => {
+          setIsQueueOpen(false);
+          setIsYouTubeQueueOpen(true);
+        }}
+      />
+
+      <YouTubeQueueModal
+        isOpen={isYouTubeQueueOpen}
+        onClose={() => setIsYouTubeQueueOpen(false)}
+        onAdd={handleQueueAdd}
       />
     </div>
   );

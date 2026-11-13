@@ -166,7 +166,7 @@ describe('Optimization 2 — Atomic Room Creation & Joining RPCs', () => {
 
     assert.match(
       roomViewCode,
-      /useRoom\(roomCode,\s*initialTitle,\s*allowCreate,\s*initialVideoId\)/
+      /useRoom\(roomCode,\s*initialTitle,\s*allowCreate,\s*initialVideoId,\s*initialVideoType\)/
     );
     assert.doesNotMatch(roomServiceCode, /ensureProfile\(/);
   });

@@ -28,6 +28,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       <AuthFormContent
         key={initialTab}
         initialTab={initialTab}
+        tone="dark"
         onLoadingChange={setIsAuthenticating}
         onAuthenticated={(immediate) => {
           if (immediate) {

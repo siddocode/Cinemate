@@ -34,7 +34,7 @@ export const RoomLoadingState: React.FC<RoomLoadingStateProps> = ({
       </h2>
 
       {stage.detail && (
-        <p className="text-[11px] font-mono uppercase tracking-[0.12em] text-[#CDBF9F]/80 mt-2 max-w-xs sm:max-w-sm leading-relaxed min-h-[2.25rem] flex items-center justify-center">
+        <p className="text-xs font-mono uppercase tracking-[0.12em] text-[#CDBF9F]/85 mt-2 max-w-xs sm:max-w-sm leading-relaxed min-h-[2.25rem] flex items-center justify-center">
           {stage.detail}
         </p>
       )}

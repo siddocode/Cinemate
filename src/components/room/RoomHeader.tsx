@@ -19,6 +19,7 @@ import {
   Users,
   Share2,
   MoreHorizontal,
+  ListVideo,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -58,6 +59,8 @@ interface RoomHeaderProps {
   onCloseRoom?: () => Promise<void>;
   isChatOpen?: boolean;
   onToggleChat?: () => void;
+  queueCount?: number;
+  onOpenQueue?: () => void;
   voiceCall?: RoomHeaderVoiceProps;
 }
 
@@ -74,6 +77,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   onCloseRoom,
   isChatOpen = true,
   onToggleChat,
+  queueCount = 0,
+  onOpenQueue,
   voiceCall,
 }) => {
   const router = useRouter();
@@ -205,7 +210,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             title={`Voice ${voiceCall.participantCount}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} (${voiceCall.status})`}
           />
           {!compactMobile && (
-            <span className="hidden xl:inline text-[11px] font-mono text-[#E8DDC5] px-1 whitespace-nowrap">
+            <span className="hidden xl:inline text-xs font-mono text-[#E8DDC5] px-1 whitespace-nowrap">
               {voiceCall.status === 'connected'
                 ? `Voice Call ${voiceCall.participantCount}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}`
                 : voiceCall.status === 'reconnecting'
@@ -254,7 +259,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     if (voiceCall.isCallFull) {
       return compactMobile ? (
         <span
-          className="h-8 px-2.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/18 text-[11px] font-mono text-[#CDBF9F] inline-flex items-center gap-1 whitespace-nowrap"
+          className="h-8 px-2.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/18 text-xs font-mono text-[#CDBF9F] inline-flex items-center gap-1 whitespace-nowrap"
           title={`Voice call is limited to ${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} participants`}
         >
           <Headphones className="w-3 h-3 text-[#9670FF]" />
@@ -265,7 +270,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       ) : (
         <Badge
           variant="default"
-          className="h-8 text-[11px] px-2.5 inline-flex whitespace-nowrap"
+          className="h-8 px-2.5 inline-flex whitespace-nowrap"
           title={`Voice call is limited to ${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} participants`}
         >
           <Headphones className="w-3 h-3 text-[#9670FF]" />
@@ -284,7 +289,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           onClick={voiceCall.onJoinCall}
           isLoading={voiceCall.status === 'joining'}
           disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
-          className="h-8 text-[11px] sm:text-xs px-2.5 sm:px-3 rounded-full whitespace-nowrap"
+          className="h-8 px-2.5 sm:px-3 rounded-full whitespace-nowrap"
           leftIcon={<PhoneCall className="w-3.5 h-3.5 animate-pulse" />}
           title="Join audio-only voice call"
           aria-label="Join audio-only voice call"
@@ -316,7 +321,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           variant="secondary"
           size="sm"
           disabled
-          className="h-8 text-xs px-3 rounded-full whitespace-nowrap opacity-65"
+          className="h-8 px-3 rounded-full whitespace-nowrap opacity-65"
           leftIcon={<MicOff className="w-3.5 h-3.5 text-[#CDBF9F]" />}
           title="Only the room host or permitted members can start a voice call. You can join once it begins."
           aria-label="Host starts voice call"
@@ -333,7 +338,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
         onClick={voiceCall.onJoinCall}
         isLoading={voiceCall.status === 'joining'}
         disabled={Boolean(voiceCall.isLeaving) || isLeavingRoom}
-        className="h-8 text-[11px] sm:text-xs px-2.5 sm:px-3 rounded-full whitespace-nowrap"
+        className="h-8 px-2.5 sm:px-3 rounded-full whitespace-nowrap"
         leftIcon={<Mic className="w-3.5 h-3.5 text-[#9670FF]" />}
         title="Start audio-only voice call (no camera)"
         aria-label="Join voice call"
@@ -359,7 +364,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               close unless host reconnects.
             </span>
           </div>
-          <span className="font-mono text-[11px] font-semibold bg-[#0E281F] border border-[#E9B872]/35 px-2.5 py-0.5 rounded-full text-[#F0C987]">
+          <span className="font-mono text-xs font-semibold bg-[#0E281F] border border-[#E9B872]/35 px-2.5 py-0.5 rounded-full text-[#F0C987]">
             {hostGraceSecondsLeft}s until room closes
           </span>
         </div>
@@ -414,7 +419,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               variant="primary"
               size="sm"
               onClick={onChangeVideoClick}
-              className="h-8 text-xs px-2.5 rounded-full whitespace-nowrap"
+              className="h-8 px-2.5 rounded-full whitespace-nowrap"
               leftIcon={<Film className="w-3.5 h-3.5" />}
               title="Load YouTube link, video URL, or upload a movie file to watch together"
               aria-label="Load watch media or upload video"
@@ -479,7 +484,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     )}
                     <span>{copied ? 'Invite Link Copied' : 'Share Invite Link'}</span>
                   </span>
-                  <span className="text-xs font-mono text-[#CDBF9F]/70">
+                  <span className="text-xs font-mono text-[#CDBF9F]/85">
                     {room.code}
                   </span>
                 </button>
@@ -500,6 +505,26 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     </span>
                     <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/15 text-[#CDBF9F]">
                       {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}
+                    </span>
+                  </button>
+                )}
+
+                {onOpenQueue && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      onOpenQueue();
+                    }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <ListVideo className="w-4 h-4 text-[#9670FF] shrink-0" />
+                      <span>Watch Queue</span>
+                    </span>
+                    <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-[#173D30] border border-[#E8DDC5]/15 text-[#CDBF9F]">
+                      {queueCount}
                     </span>
                   </button>
                 )}
@@ -586,7 +611,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             <button
               type="button"
               onClick={() => void handleCopyLink()}
-              className="inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold bg-[#E8DDC5] hover:bg-[#F7F4EC] px-2.5 py-1 rounded-full text-[#102B23] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold bg-[#E8DDC5] hover:bg-[#F7F4EC] px-2.5 py-1 rounded-full text-[#102B23] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               title="Copy room invitation link"
               aria-label="Copy room code and invitation link"
             >
@@ -638,7 +663,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               className="cursor-pointer transition-opacity hover:opacity-90 shrink-0"
               title="View participants or invite friends"
             >
-              <Badge variant="warning" dot className="text-[11px] whitespace-nowrap">
+              <Badge variant="warning" dot className="whitespace-nowrap">
                 {copied ? 'Invite Link Copied' : 'Waiting for Viewers · Invite'}
               </Badge>
             </button>
@@ -652,7 +677,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               <Badge
                 variant="success"
                 dot
-                className="text-[11px] max-w-[220px] truncate whitespace-nowrap cursor-pointer"
+                className="max-w-[220px] truncate whitespace-nowrap cursor-pointer"
               >
                 {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} Online · {otherNames}
               </Badge>
@@ -663,10 +688,29 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           <Badge
             variant={isHost ? 'purple' : isCoHost ? 'success' : 'default'}
             dot={isHost || isCoHost}
-            className="text-[11px] hidden lg:inline-flex"
+            className="hidden lg:inline-flex"
           >
             {isHost ? 'Host' : isCoHost ? 'Co-Host' : 'Viewer'}
           </Badge>
+
+          {onOpenQueue && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenQueue}
+              className="h-8 px-3 rounded-full relative"
+              leftIcon={<ListVideo className="w-3.5 h-3.5 text-[#9670FF]" />}
+              title="Open the shared watch queue"
+              aria-label="Open watch queue"
+            >
+              Queue
+              {queueCount > 0 && (
+                <span className="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[#9670FF] px-1 text-[11px] font-bold text-[#0B1E18]">
+                  {queueCount}
+                </span>
+              )}
+            </Button>
+          )}
 
           {/* Change Watch Media Source Button (Host, Co-Host or permitted controllers) */}
           {(canControl ?? isHost) && (
@@ -674,7 +718,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               variant="primary"
               size="sm"
               onClick={onChangeVideoClick}
-              className="h-8 text-xs px-3 rounded-full"
+              className="h-8 px-3 rounded-full"
               leftIcon={<Film className="w-3.5 h-3.5" />}
               title="Load YouTube link, video URL, or upload a movie file to watch together"
               aria-label="Load watch media or upload video"
@@ -692,7 +736,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               size="sm"
               onClick={onToggleChat}
               disabled={isLeavingRoom}
-              className="h-8 text-xs rounded-full hidden lg:inline-flex"
+              className="h-8 rounded-full hidden lg:inline-flex"
               leftIcon={<MessageSquare className="w-3.5 h-3.5 text-[#9670FF]" />}
             >
               Chat

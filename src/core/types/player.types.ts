@@ -66,6 +66,11 @@ export interface IVideoPlayerAdapter {
   getPlaybackState(): PlaybackState;
 
   /**
+   * Returns the most recent provider-specific playback error code, if any.
+   */
+  getLastErrorCode?(): number | null;
+
+  /**
    * Loads a new video URL into the active player.
    */
   loadVideo(videoUrl: string): Promise<void>;

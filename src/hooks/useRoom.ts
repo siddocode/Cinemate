@@ -26,9 +26,11 @@ import {
   emitRoomChatBroadcast,
   emitRoomChatInsert,
   emitRoomChatSeen,
+  emitRoomQueueChange,
   RealtimeCallSlotRow,
   RealtimeChatMessageRow,
   RealtimeChatSeenPayload,
+  RealtimeQueueItemRow,
 } from '@/lib/supabase/roomRealtimeBus';
 import { isValidChatBroadcastPayload } from '@/lib/utils/chat';
 
@@ -48,7 +50,8 @@ export function useRoom(
   roomCode: string,
   initialTitle?: string,
   allowCreate = false,
-  initialVideoId?: string
+  initialVideoId?: string,
+  initialVideoType: VideoSourceType = 'youtube'
 ) {
   const { user, isInitialized } = useSession();
   const [room, setRoom] = useState<Room | null>(null);
@@ -80,6 +83,7 @@ export function useRoom(
   const userRef = useRef(user);
   const initialTitleRef = useRef(initialTitle);
   const initialVideoIdRef = useRef(initialVideoId);
+  const initialVideoTypeRef = useRef<VideoSourceType>(initialVideoType);
   const roleRef = useRef(role);
   const roomHostIdRef = useRef<string | undefined>(room?.hostId);
   const roomVideoRef = useRef<{ videoUrl: string; videoType: VideoSourceType }>({
@@ -98,6 +102,10 @@ export function useRoom(
   useEffect(() => {
     initialVideoIdRef.current = initialVideoId;
   }, [initialVideoId]);
+
+  useEffect(() => {
+    initialVideoTypeRef.current = initialVideoType;
+  }, [initialVideoType]);
 
   useEffect(() => {
     roleRef.current = role;
@@ -151,7 +159,7 @@ export function useRoom(
               title: resolvedTitle,
               host: currentUser,
               videoUrl: resolvedInitialVideo,
-              videoType: 'youtube',
+              videoType: initialVideoTypeRef.current,
             })
           : await roomService.joinRoomSession({
               code: roomCode,
@@ -537,6 +545,22 @@ export function useRoom(
             eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
             newRow: payload.new as RealtimeCallSlotRow | undefined,
             oldRow: payload.old as Partial<RealtimeCallSlotRow> | undefined,
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'room_queue_items',
+          filter: `room_id=eq.${currentRoomId}`,
+        },
+        (payload) => {
+          emitRoomQueueChange(currentRoomId, {
+            eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+            newRow: payload.new as RealtimeQueueItemRow | undefined,
+            oldRow: payload.old as Partial<RealtimeQueueItemRow> | undefined,
           });
         }
       );

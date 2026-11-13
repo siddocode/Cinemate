@@ -118,7 +118,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
           </h2>
         </div>
         {!isLoading && (
-          <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-[#CDBF9F]">
+          <span className="text-xs font-mono uppercase tracking-[0.14em] text-[#CDBF9F]">
             {displayedFavorites.length} {displayedFavorites.length === 1 ? 'title' : 'titles'}
           </span>
         )}
@@ -151,12 +151,12 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
               <p className="text-sm font-medium text-[#F7F4EC]">
                 Your screening shelf is empty
               </p>
-              <p className="text-xs text-[#CDBF9F]/80 mt-0.5">
+              <p className="text-xs text-[#CDBF9F]/90 mt-0.5">
                 Star any video inside a watch room to relaunch it here in one click.
               </p>
             </div>
           </div>
-          <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-[#CDBF9F]/60">
+          <span className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#CDBF9F]/85">
             Ready when you are
           </span>
         </div>
@@ -206,7 +206,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
                   {fav.videoTitle}
                 </h3>
                 {fav.roomCode && (
-                  <p className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#CDBF9F]/70 mt-1">
+                  <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-[#CDBF9F]/85 mt-1">
                     Room {fav.roomCode}
                   </p>
                 )}
@@ -218,7 +218,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
                 onClick={() => handleLaunchFavorite(fav.videoId)}
                 isLoading={launchingVideoId === fav.videoId}
                 disabled={isNavigating || removingVideoId === fav.videoId}
-                className="w-full text-xs mt-3.5 justify-center"
+                className="w-full mt-3.5 justify-center"
                 leftIcon={<Play className="w-3 h-3 fill-current" />}
               >
                 {launchingVideoId === fav.videoId

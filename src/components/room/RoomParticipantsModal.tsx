@@ -146,7 +146,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
     >
       <div className="space-y-6">
         {actionError && (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-[#2A1215] border border-[#DC2626]/40 text-xs text-[#FCA5A5]">
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-[#2A1215] border border-[#DC2626]/40 text-[13px] text-[#FCA5A5]">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#EF4444]" />
             <span>{actionError}</span>
           </div>
@@ -162,10 +162,10 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                   <Sliders className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs sm:text-sm font-medium text-[#F7F4EC]">
+                  <h4 className="text-sm font-medium text-[#F7F4EC]">
                     Shared Playback Controls
                   </h4>
-                  <p className="text-[11px] text-[#CDBF9F] leading-tight mt-0.5">
+                  <p className="text-[13px] text-[#CDBF9F] leading-tight mt-0.5">
                     {room.allowGuestControl
                       ? 'All participants can play, pause, seek, and change video'
                       : 'Restricted: Only Host and Co-Hosts can control video'}
@@ -192,7 +192,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                   />
                 </button>
               ) : (
-                <Badge variant={room.allowGuestControl ? 'success' : 'default'} className="text-[10px]">
+                <Badge variant={room.allowGuestControl ? 'success' : 'default'} className="text-xs">
                   {room.allowGuestControl ? 'Enabled' : 'Host Only'}
                 </Badge>
               )}
@@ -208,10 +208,10 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                     <PhoneCall className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-xs sm:text-sm font-medium text-[#F7F4EC]">
+                    <h4 className="text-sm font-medium text-[#F7F4EC]">
                       Voice Call Initiation
                     </h4>
-                    <p className="text-[11px] text-[#CDBF9F] leading-tight mt-0.5">
+                    <p className="text-[13px] text-[#CDBF9F] leading-tight mt-0.5">
                       {room.allowGuestCall
                         ? 'All participants can start a new voice call'
                         : 'Restricted: Only Host and Co-Hosts can start calls (others can join)'}
@@ -238,7 +238,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                     />
                   </button>
                 ) : (
-                  <Badge variant={room.allowGuestCall ? 'success' : 'default'} className="text-[10px]">
+                  <Badge variant={room.allowGuestCall ? 'success' : 'default'} className="text-xs">
                     {room.allowGuestCall ? 'Enabled' : 'Host Only'}
                   </Badge>
                 )}
@@ -248,23 +248,23 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
         </div>
 
         {/* Room Code & Copy Pill */}
-        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-[#DFD2B4]/30 border border-[#CDBF9F]/30 text-xs">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-[#E8DDC5] border border-[#E8DDC5] text-xs">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-[#102B23] font-semibold text-xs tracking-wider">
               {room.code}
             </span>
-            <span className="text-[#173D30]/70 text-[11px] hidden sm:inline">
+            <span className="text-[#173D30]/85 text-xs hidden sm:inline">
               · Invite link ready to share
             </span>
           </div>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={handleCopyLink}
-            className="h-7 text-xs rounded-full"
+            className="h-7 rounded-full shrink-0"
             leftIcon={
               copied ? (
-                <Check className="w-3.5 h-3.5 text-[#15803D]" />
+                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
               ) : (
                 <Copy className="w-3.5 h-3.5" />
               )
@@ -276,9 +276,9 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
 
         {/* Participants Roster List */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-[#173D30]/80 font-medium px-1">
+          <div className="flex items-center justify-between text-xs text-[#F7F4EC] font-medium px-1">
             <span>Participants ({displayMembers.length}/4)</span>
-            <span className="text-[11px] text-[#173D30]/60">Max 4 viewers</span>
+            <span className="text-xs text-[#CDBF9F]/85">Max 4 viewers</span>
           </div>
 
           <div className="divide-y divide-[#E8DDC5]/10 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14 overflow-hidden">
@@ -317,32 +317,32 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                           {member.username}
                         </span>
                         {isSelf && (
-                          <span className="text-[10px] font-mono text-[#CDBF9F]/80">
+                          <span className="text-xs font-mono text-[#CDBF9F]/90">
                             (You)
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {isRoomHost ? (
-                          <Badge variant="purple" dot className="text-[10px] sm:text-[11px] py-0 px-2">
+                          <Badge variant="purple" dot className="py-0 px-2">
                             <Crown className="w-3 h-3 mr-0.5" />
                             Host
                           </Badge>
                         ) : isCoHost ? (
-                          <Badge variant="success" dot className="text-[10px] sm:text-[11px] py-0 px-2">
+                          <Badge variant="success" dot className="py-0 px-2">
                             <ShieldCheck className="w-3 h-3 mr-0.5" />
                             Co-Host
                           </Badge>
                         ) : isRestrictedViewer ? (
-                          <Badge variant="warning" className="text-[10px] sm:text-[11px] py-0 px-2">
+                          <Badge variant="warning" className="py-0 px-2">
                             View-Only
                           </Badge>
                         ) : (
-                          <Badge variant="default" className="text-[10px] sm:text-[11px] py-0 px-2 text-[#CDBF9F]">
+                          <Badge variant="default" className="py-0 px-2 text-[#CDBF9F]">
                             Viewer
                           </Badge>
                         )}
-                        <span className="text-[11px] text-[#CDBF9F]/70">
+                        <span className="text-xs text-[#CDBF9F]/85">
                           {isOnline ? 'Connected' : 'Offline'}
                         </span>
                       </div>
@@ -361,7 +361,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             type="button"
                             disabled={isBusy}
                             onClick={() => handleKick(member.userId)}
-                            className="px-2.5 py-1 rounded bg-[#DC2626] hover:bg-[#B91C1C] text-[#F7F4EC] text-xs font-semibold cursor-pointer disabled:opacity-50"
+                            className="px-2.5 py-1 rounded bg-[#DC2626] hover:bg-[#B91C1C] text-[#F7F4EC] text-[13px] font-semibold cursor-pointer disabled:opacity-50"
                           >
                             {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Yes, Kick'}
                           </button>
@@ -369,7 +369,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             type="button"
                             disabled={isBusy}
                             onClick={() => setConfirmKickId(null)}
-                            className="px-2 py-1 text-[#CDBF9F] hover:text-[#F7F4EC] text-xs cursor-pointer"
+                            className="px-2 py-1 text-[#CDBF9F] hover:text-[#F7F4EC] text-[13px] cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -383,7 +383,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                               size="sm"
                               disabled={isBusy}
                               onClick={() => handleRoleChange(member.userId, member.role)}
-                              className="h-8 text-xs px-2.5 rounded-lg text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#173D30]/60 hover:bg-[#1E4B3C]"
+                              className="h-8 px-2.5 rounded-lg text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#173D30]/60 hover:bg-[#1E4B3C]"
                               leftIcon={
                                 isBusy && actionLoadingId === `role-${member.userId}` ? (
                                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -406,7 +406,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             size="sm"
                             disabled={isBusy}
                             onClick={() => setConfirmKickId(member.userId)}
-                            className="h-8 text-xs px-2.5 rounded-lg text-[#E87A70] hover:text-[#FF8E85] hover:bg-[#DC2626]/10"
+                            className="h-8 px-2.5 rounded-lg text-[#E87A70] hover:text-[#FF8E85] hover:bg-[#DC2626]/10"
                             leftIcon={<UserX className="w-3.5 h-3.5 text-[#E87A70]" />}
                             title="Remove participant from room"
                           >
@@ -423,7 +423,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
         </div>
 
         {/* Footer Note */}
-        <p className="text-[11px] text-[#173D30]/65 text-center leading-relaxed">
+        <p className="text-[13px] text-[#CDBF9F]/85 text-center leading-relaxed">
           Kicked participants are disconnected immediately. If they rejoin, they are permanently locked to view-only access (no Co-Host or Shared Controls).
         </p>
       </div>

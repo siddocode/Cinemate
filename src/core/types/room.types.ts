@@ -40,6 +40,31 @@ export interface RoomMember {
   lastSeenAt: string;
 }
 
+export interface RoomQueueItem {
+  id: string;
+  roomId: string;
+  videoId: string;
+  videoUrl: string;
+  videoType: VideoSourceType;
+  title: string;
+  channelTitle?: string;
+  thumbnailUrl?: string;
+  durationSeconds: number;
+  position: number;
+  addedBy: string;
+  createdAt: string;
+}
+
+export interface QueueVideoInput {
+  videoId?: string;
+  videoUrl?: string;
+  videoType: VideoSourceType;
+  title: string;
+  channelTitle?: string;
+  thumbnailUrl?: string;
+  durationSeconds?: number;
+}
+
 export type ChatMessageStatus = 'sending' | 'sent' | 'seen' | 'failed';
 
 export interface ChatMessage {

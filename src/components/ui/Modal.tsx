@@ -64,22 +64,22 @@ export const Modal: React.FC<ModalProps> = ({
         }}
       />
 
-      {/* Warm Sand Beige Modal Dialog */}
+      {/* Dark cinema dialog */}
       <div
         className={cn(
-          'relative w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#EDE2CA] text-[#102B23] border border-[#CDBF9F]/70 rounded-2xl shadow-[0_28px_72px_rgba(0,0,0,0.55)] p-5 sm:p-6 z-10 cinema-enter',
+          'relative w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0B1E17] text-[#F7F4EC] border border-[#E8DDC5]/15 rounded-2xl shadow-[0_28px_72px_rgba(0,0,0,0.55)] p-5 sm:p-6 z-10 cinema-enter',
           className
         )}
       >
-        <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#173D30]/12">
+        <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#E8DDC5]/12">
           <div>
             {title && (
-              <h3 className="font-serif text-2xl font-semibold tracking-tight text-[#102B23] leading-tight">
+              <h3 className="font-serif text-2xl font-semibold tracking-tight text-[#F7F4EC] leading-tight">
                 {title}
               </h3>
             )}
             {description && (
-              <p className="text-xs text-[#173D30]/75 mt-1 leading-relaxed">{description}</p>
+              <p className="text-sm text-[#CDBF9F]/90 mt-1.5 leading-relaxed">{description}</p>
             )}
           </div>
           <button
@@ -87,7 +87,7 @@ export const Modal: React.FC<ModalProps> = ({
             onClick={onClose}
             disabled={preventClose}
             aria-label="Close dialog"
-            className="p-1.5 rounded-lg text-[#173D30]/65 hover:text-[#102B23] hover:bg-[#102B23]/8 transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+            className="p-1.5 rounded-lg text-[#CDBF9F]/80 hover:text-[#F7F4EC] hover:bg-[#E8DDC5]/10 transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           >
             <X className="w-4 h-4" />
           </button>

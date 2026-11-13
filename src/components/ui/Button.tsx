@@ -53,15 +53,15 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ghost:
         'bg-transparent hover:bg-[#E8DDC5]/[0.08] text-[#CDBF9F] hover:text-[#F7F4EC] border border-transparent',
       ghostSand:
-        'bg-transparent hover:bg-[#102B23]/[0.08] text-[#173D30]/80 hover:text-[#102B23] border border-transparent focus-visible:ring-offset-[#EDE2CA]',
+        'bg-transparent hover:bg-[#E8DDC5]/[0.08] text-[#CDBF9F] hover:text-[#F7F4EC] border border-transparent focus-visible:ring-offset-[#0B1E17]',
       danger:
         'bg-[#3A1E1C] hover:bg-[#4B2623] text-[#F2B8B2] border border-[#E87A70]/35',
     };
 
     const sizes = {
-      sm: 'text-xs px-3 py-1.5 gap-1.5',
+      sm: 'text-sm px-3.5 py-2 gap-1.5',
       md: 'text-sm px-4 py-2.5 gap-2',
-      lg: 'text-sm px-6 py-3 gap-2 font-semibold tracking-wide',
+      lg: 'text-base px-6 py-3 gap-2 font-semibold tracking-wide',
     };
 
     return (

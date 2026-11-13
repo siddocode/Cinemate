@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 export const Footer: React.FC = () => {
   const pathname = usePathname();
 
-  if (pathname?.startsWith('/room/')) {
+  if (pathname?.startsWith('/room/') || pathname?.startsWith('/browse')) {
     return null;
   }
 
