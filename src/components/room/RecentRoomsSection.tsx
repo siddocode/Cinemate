@@ -2,12 +2,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Clock, Play, Trash2, Tv, Link2, Upload, Film, Loader2 } from 'lucide-react';
+import { Clock, Play, Trash2, Tv, Link2, Upload, Film } from 'lucide-react';
 import { roomService } from '@/lib/services/roomService';
 import { UserRoomSummary } from '@/core/types/room.types';
 import { useSession } from '@/hooks/useSession';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { cn } from '@/lib/utils/cn';
 import {
   REOPEN_ROOM_BUTTON_STAGES,
   useLoadingStages,
@@ -23,7 +24,8 @@ function formatRelativeDate(isoDate: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(ts).toLocaleDateString();
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
 interface RecentRoomsSectionProps {
@@ -46,6 +48,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
   const [internalRooms, setInternalRooms] = useState<UserRoomSummary[]>([]);
   const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const [exitingRoomId, setExitingRoomId] = useState<string | null>(null);
   const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
 
   const usesExternalData = externalRooms !== undefined;
@@ -87,6 +90,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
   }, [user.id, isAuthenticated, usesExternalData]);
 
   const isNavigating = isExternalNavigating || openingRoomId !== null;
+  const isActionLocked = isNavigating || deletingRoomId !== null || exitingRoomId !== null;
   const { stage: reopenButtonStage } = useLoadingStages(
     openingRoomId !== null,
     REOPEN_ROOM_BUTTON_STAGES
@@ -94,6 +98,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
 
   const handleOpenRoom = (room: UserRoomSummary) => {
     if (isNavigating || deletingRoomId !== null) return;
+    if (exitingRoomId !== null) return;
     setOpeningRoomId(room.id);
     onStartNavigation?.();
     router.push(`/room/${room.code}`);
@@ -106,16 +111,25 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
     e.preventDefault();
     e.stopPropagation();
     if (isNavigating || deletingRoomId !== null) return;
+    if (exitingRoomId !== null) return;
     setDeletingRoomId(room.id);
     try {
       const isHost = room.hostId === user.id;
       const removed = await roomService.leaveOrDeleteRoom(room.id, user.id, isHost);
       if (removed) {
-        const updateRooms = onRoomsChange ?? setInternalRooms;
-        updateRooms((prev) => prev.filter((r) => r.id !== room.id));
+        // Trigger smooth dissolve/collapse animation before removing from DOM
+        setExitingRoomId(room.id);
+        setTimeout(() => {
+          const updateRooms = onRoomsChange ?? setInternalRooms;
+          updateRooms((prev) => prev.filter((r) => r.id !== room.id));
+          setExitingRoomId((prev) => (prev === room.id ? null : prev));
+          setDeletingRoomId((prev) => (prev === room.id ? null : prev));
+        }, 220);
+      } else {
+        setDeletingRoomId(null);
       }
-    } finally {
-      setDeletingRoomId((prev) => (prev === room.id ? null : prev));
+    } catch {
+      setDeletingRoomId(null);
     }
   };
 
@@ -190,18 +204,48 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
           {rooms.map((room) => {
             const isHost = room.hostId === user.id;
             const isDeletingThisRoom = deletingRoomId === room.id;
+            const isExitingThisRoom = exitingRoomId === room.id;
             return (
               <article
                 key={room.id}
-                className={`bg-[#173D30]/75 border border-[#E8DDC5]/16 hover:border-[#E8DDC5]/35 hover:bg-[#173D30]/95 rounded-xl p-3 sm:p-3.5 transition-all duration-150 flex flex-col justify-between gap-2.5 ${
-                  isDeletingThisRoom ? 'opacity-60 pointer-events-none' : ''
-                }`}
+                className={cn(
+                  'relative overflow-hidden rounded-xl p-3 sm:p-3.5 flex flex-col justify-between gap-2.5 transition-all duration-200',
+                  isExitingThisRoom
+                    ? 'opacity-0 scale-95 -translate-y-1.5 blur-[1px] pointer-events-none'
+                    : isDeletingThisRoom
+                    ? 'bg-[#181111]/90 border border-[#E87A70]/40 shadow-[0_4px_24px_rgba(232,122,112,0.14)] pointer-events-none'
+                    : 'bg-[#173D30]/75 border border-[#E8DDC5]/16 hover:border-[#E8DDC5]/35 hover:bg-[#173D30]/95'
+                )}
               >
+                {/* Cinema Deletion Overlay */}
+                {isDeletingThisRoom && (
+                  <div
+                    className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-[#091B15]/92 backdrop-blur-[2px] rounded-xl text-center p-3 cinema-enter"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {/* Architectural cinema dual-ring spinner */}
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full border-2 border-[#E8DDC5]/15 border-t-[#F2B8B2] border-r-[#F2B8B2]/60 animate-spin" />
+                      <div className="absolute w-2 h-2 rounded-full bg-[#F2B8B2] shadow-[0_0_8px_#F2B8B2] animate-pulse" />
+                    </div>
+
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="font-mono text-xs uppercase tracking-[0.16em] text-[#F2B8B2] font-semibold">
+                        {isHost ? 'Deleting Room…' : 'Leaving Room…'}
+                      </span>
+                      <span className="text-[11px] text-[#CDBF9F]/75 font-sans">
+                        {isHost ? 'Releasing screening & queue' : 'Removing from shelf'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-start justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => handleOpenRoom(room)}
-                    disabled={isNavigating || deletingRoomId !== null}
+                    disabled={isActionLocked}
                     className="min-w-0 flex-1 text-left cursor-pointer disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9670FF] rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -216,7 +260,10 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                       <Badge variant={isHost ? 'purple' : 'default'}>
                         {isHost ? 'Host' : 'Member'}
                       </Badge>
-                      <span className="font-mono text-[11px] text-[#CDBF9F]/85 ml-auto sm:ml-0">
+                      <span
+                        suppressHydrationWarning
+                        className="font-mono text-[11px] text-[#CDBF9F]/85 ml-auto sm:ml-0"
+                      >
                         {formatRelativeDate(room.lastSyncedAt)}
                       </span>
                     </div>
@@ -226,16 +273,17 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                     type="button"
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => void handleRemoveRoom(room, e)}
-                    disabled={isNavigating || deletingRoomId !== null}
-                    className="min-w-[36px] min-h-[36px] sm:min-w-[30px] sm:min-h-[30px] flex items-center justify-center rounded-lg bg-[#0E281F]/80 hover:bg-[#3A1E1C] border border-[#E8DDC5]/14 text-[#CDBF9F] hover:text-[#F2B8B2] transition-colors cursor-pointer shrink-0 disabled:opacity-45 disabled:pointer-events-none"
+                    disabled={isActionLocked}
+                    className={cn(
+                      'min-w-[36px] min-h-[36px] sm:min-w-[30px] sm:min-h-[30px] flex items-center justify-center rounded-lg border transition-colors cursor-pointer shrink-0 disabled:opacity-45 disabled:pointer-events-none',
+                      isDeletingThisRoom
+                        ? 'bg-[#3A1E1C] border-[#E87A70]/50 text-[#F2B8B2]'
+                        : 'bg-[#0E281F]/80 hover:bg-[#3A1E1C] border-[#E8DDC5]/14 text-[#CDBF9F] hover:text-[#F2B8B2]'
+                    )}
                     title={isHost ? 'Delete room' : 'Leave room'}
                     aria-label={isHost ? `Delete ${room.title}` : `Leave ${room.title}`}
                   >
-                    {isDeletingThisRoom ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3.5 h-3.5" />
-                    )}
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -253,7 +301,7 @@ export const RecentRoomsSection: React.FC<RecentRoomsSectionProps> = ({
                       handleOpenRoom(room);
                     }}
                     isLoading={openingRoomId === room.id}
-                    disabled={isNavigating || deletingRoomId !== null}
+                    disabled={isActionLocked}
                     className="h-7 px-3 text-xs shrink-0 rounded-lg"
                     leftIcon={<Play className="w-3 h-3 fill-current" />}
                   >

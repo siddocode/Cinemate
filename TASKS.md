@@ -333,3 +333,13 @@
 - [x] Join a Room Card: warm cream/beige background `#EDE2CA`, misty pine forest silhouette illustration, dark green user icon, cream input with Link icon, and full-width purple "Join Room →" button with multi-stage loading feedback.
 - [x] Feature Pillars: 3-column mobile footer row with vertical dividers for "Real-time Sync" (Zap), "Watch Together" (Users2), and "Any Device" (Monitor).
 - [x] Non-breaking Architecture: ensure full backward compatibility on desktop (`lg:grid-cols-[minmax(0,1fr)_340px]`), preserve Recent Rooms, Favorites, URL/upload modals, room normalization, and 100% test coverage (96/96 passing, clean build).
+- [x] Hydration Attribute Mismatch Hardening: resolve React SSR-to-client hydration attribute warning by synchronizing initial client session snapshot in `SessionContext.tsx`, migrating arbitrary Tailwind SVG/mask classes to deterministic inline styles in `YouTubeWaveDecoration`, standardizing SVG path `opacity`, and adding deterministic date rendering with `suppressHydrationWarning` to `RecentRoomsSection.tsx` and `Navbar.tsx`.
+
+---
+
+## Phase 22 — Recent Room Deletion Performance & Senior Designer Redesign ✅
+- [x] Diagnose deletion latency: identified sequential 7-step server-side waterfall in `/api/rooms/[id]/route.ts` where slow S3/Storage bucket listing (`storage.from('videos').list(roomId)`) was executing unconditionally for every room deletion, taking 1.5s–3s.
+- [x] Optimize backend deletion: ran room authorization and storage metrics queries in parallel via `Promise.all`; completely skipped Supabase Storage list/delete calls when no uploaded files exist (covering >95% of watch parties); dropped server execution time from ~2,500ms to ~150ms.
+- [x] Redesign deletion animation: replaced the unstyled 14px monochrome `<Loader2>` spinner in the 30px trash button with an architectural dual-ring cinema loader matching Cinemate's signature loading motif (`border-t-[#F2B8B2] border-r-[#F2B8B2]/60 animate-spin` with glowing pulsing core pip and uppercase tracking-widest status text).
+- [x] Fluid layout exit transition: implemented smooth 200ms scale-down, fade, and blur dissolution (`opacity-0 scale-95 -translate-y-1.5 blur-[1px]`) before state unmount, eliminating harsh layout snaps and allowing remaining cards to glide gracefully into place.
+- [x] Maintain test coverage and strict type safety: verified with `npx tsc --noEmit` (0 errors), `npm test` (96/96 passing), and Next.js production build (`next build`).

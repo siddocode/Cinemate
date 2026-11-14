@@ -101,7 +101,13 @@ function YouTubeWaveDecoration() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 right-0 w-3/4 sm:w-3/5 lg:w-1/2 overflow-hidden select-none [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_25%,black_100%)] [mask-image:linear-gradient(to_right,transparent_0%,black_25%,black_100%)]"
+      className="pointer-events-none absolute inset-y-0 right-0 w-3/4 sm:w-3/5 lg:w-1/2 overflow-hidden select-none"
+      style={{
+        WebkitMaskImage:
+          'linear-gradient(to right, transparent 0%, black 25%, black 100%)',
+        maskImage:
+          'linear-gradient(to right, transparent 0%, black 25%, black 100%)',
+      }}
     >
       {/* Soft emerald/purple ambient glow */}
       <div className="absolute -right-6 top-1/2 -translate-y-1/2 h-64 w-64 rounded-full bg-gradient-to-bl from-[#10B981]/15 via-[#9670FF]/10 to-transparent blur-3xl pointer-events-none" />
@@ -121,24 +127,26 @@ function YouTubeWaveDecoration() {
           </linearGradient>
         </defs>
         {/* Harmonically spaced fluid wave ribbon */}
-        <path d="M0.0 175.0C95.0 220.0 210.0 35.0 380.0 15.0" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.32" />
-        <path d="M2.4 177.1C96.8 215.3 208.4 39.5 381.1 21.1" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.36" />
-        <path d="M4.7 179.2C98.7 210.5 206.8 43.9 382.1 27.1" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.41" />
-        <path d="M7.1 181.3C100.5 205.8 205.3 48.4 383.2 33.2" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.46" />
-        <path d="M9.5 183.4C102.4 201.1 203.7 52.9 384.2 39.2" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.52" />
-        <path d="M11.8 185.5C104.2 196.3 202.1 57.4 385.3 45.3" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.58" />
-        <path d="M14.2 187.6C106.1 191.6 200.5 61.8 386.3 51.3" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.63" />
-        <path d="M16.6 189.7C107.9 186.8 198.9 66.3 387.4 57.4" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.67" />
-        <path d="M18.9 191.8C109.7 182.1 197.4 70.8 388.4 63.4" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.69" />
-        <path d="M21.3 193.9C111.6 177.4 195.8 75.3 389.5 69.5" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.68" />
-        <path d="M23.7 196.1C113.4 172.6 194.2 79.7 390.5 75.5" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.64" />
-        <path d="M26.1 198.2C115.3 167.9 192.6 84.2 391.6 81.6" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.59" />
-        <path d="M28.4 200.3C117.1 163.2 191.1 88.7 392.6 87.6" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.53" />
-        <path d="M30.8 202.4C118.9 158.4 189.5 93.2 393.7 93.7" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.47" />
-        <path d="M33.2 204.5C120.8 153.7 187.9 97.6 394.7 99.7" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.42" />
-        <path d="M35.5 206.6C122.6 148.9 186.3 102.1 395.8 105.8" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.37" />
-        <path d="M37.9 208.7C124.5 144.2 184.7 106.6 396.8 111.8" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.33" />
-        <path d="M40.3 210.8C126.3 139.5 183.2 111.1 397.9 117.9" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.29" />
+        <g stroke="url(#yt-wave)">
+          <path d="M0.0 175.0C95.0 220.0 210.0 35.0 380.0 15.0" strokeWidth="1.2" opacity="0.32" />
+          <path d="M2.4 177.1C96.8 215.3 208.4 39.5 381.1 21.1" strokeWidth="1.0" opacity="0.36" />
+          <path d="M4.7 179.2C98.7 210.5 206.8 43.9 382.1 27.1" strokeWidth="1.2" opacity="0.41" />
+          <path d="M7.1 181.3C100.5 205.8 205.3 48.4 383.2 33.2" strokeWidth="1.0" opacity="0.46" />
+          <path d="M9.5 183.4C102.4 201.1 203.7 52.9 384.2 39.2" strokeWidth="1.2" opacity="0.52" />
+          <path d="M11.8 185.5C104.2 196.3 202.1 57.4 385.3 45.3" strokeWidth="1.0" opacity="0.58" />
+          <path d="M14.2 187.6C106.1 191.6 200.5 61.8 386.3 51.3" strokeWidth="1.2" opacity="0.63" />
+          <path d="M16.6 189.7C107.9 186.8 198.9 66.3 387.4 57.4" strokeWidth="1.0" opacity="0.67" />
+          <path d="M18.9 191.8C109.7 182.1 197.4 70.8 388.4 63.4" strokeWidth="1.2" opacity="0.69" />
+          <path d="M21.3 193.9C111.6 177.4 195.8 75.3 389.5 69.5" strokeWidth="1.0" opacity="0.68" />
+          <path d="M23.7 196.1C113.4 172.6 194.2 79.7 390.5 75.5" strokeWidth="1.2" opacity="0.64" />
+          <path d="M26.1 198.2C115.3 167.9 192.6 84.2 391.6 81.6" strokeWidth="1.0" opacity="0.59" />
+          <path d="M28.4 200.3C117.1 163.2 191.1 88.7 392.6 87.6" strokeWidth="1.2" opacity="0.53" />
+          <path d="M30.8 202.4C118.9 158.4 189.5 93.2 393.7 93.7" strokeWidth="1.0" opacity="0.47" />
+          <path d="M33.2 204.5C120.8 153.7 187.9 97.6 394.7 99.7" strokeWidth="1.2" opacity="0.42" />
+          <path d="M35.5 206.6C122.6 148.9 186.3 102.1 395.8 105.8" strokeWidth="1.0" opacity="0.37" />
+          <path d="M37.9 208.7C124.5 144.2 184.7 106.6 396.8 111.8" strokeWidth="1.2" opacity="0.33" />
+          <path d="M40.3 210.8C126.3 139.5 183.2 111.1 397.9 117.9" strokeWidth="1.0" opacity="0.29" />
+        </g>
       </svg>
     </div>
   );
