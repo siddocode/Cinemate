@@ -136,8 +136,9 @@ export class YouTubePlayerAdapter implements IVideoPlayerAdapter {
             },
             onError: (err) => {
               if (this.isDestroyed) return;
-              console.warn('[Syncora] YouTube Player error:', err.data);
-              this.lastErrorCode = err.data;
+              console.warn('[Syncora] YouTube Player error:', err?.data ?? err);
+              const rawCode = err && typeof err === 'object' && 'data' in err ? (err as { data: unknown }).data : err;
+              this.lastErrorCode = typeof rawCode === 'number' ? rawCode : Number(rawCode) || null;
               this.emit('ERROR', this.getPlaybackState());
             },
             onPlaybackRateChange: () => {

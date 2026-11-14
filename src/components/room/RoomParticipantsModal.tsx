@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Modal } from '@/components/ui/Modal';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Room, RoomMember, RoomRole, ParticipantPresence } from '@/core/types/room.types';
@@ -13,10 +12,11 @@ import {
   Sliders,
   Check,
   Copy,
-  Crown,
   Loader2,
   AlertCircle,
   PhoneCall,
+  Users,
+  X,
 } from 'lucide-react';
 
 interface RoomParticipantsModalProps {
@@ -137,14 +137,57 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
     lastSeenAt: new Date().toISOString(),
   }));
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  if (!isOpen) return null;
+
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Room Members &amp; Permissions"
-      description="Manage room participants, playback control authority, and membership."
-    >
-      <div className="space-y-6">
+    <div className="fixed inset-0 z-50 flex justify-end pointer-events-none" role="dialog" aria-modal="true">
+      {/* Soft non-intrusive backdrop on mobile (tap to close); hidden on desktop so video remains clickable */}
+      <div
+        className="absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] transition-opacity drawer-backdrop pointer-events-auto lg:hidden"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Wide cinema slide-over side drawer */}
+      <aside className="relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] drawer-enter pointer-events-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-[#E8DDC5]/12 px-4 py-3.5 shrink-0 bg-[#0E281F]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#9670FF]/35 bg-[#9670FF]/12 text-[#B397FF]">
+              <Users className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg sm:text-xl font-semibold leading-tight text-[#F7F4EC] truncate">
+                Room Members &amp; Permissions
+              </h2>
+              <p className="text-xs text-[#CDBF9F]/85 truncate mt-0.5">
+                Manage participants, playback control authority, and invite links.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1.5 text-[#CDBF9F] hover:bg-[#173D30] hover:text-[#F7F4EC] transition-colors cursor-pointer shrink-0"
+            aria-label="Close members panel"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
         {actionError && (
           <div className="flex items-start gap-2.5 p-3 rounded-xl bg-[#2A1215] border border-[#DC2626]/40 text-[13px] text-[#FCA5A5]">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#EF4444]" />
@@ -155,20 +198,20 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
         {/* Host Authority Delegation Controls */}
         <div className="space-y-2.5">
           {/* Shared Playback Controls */}
-          <div className="p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14">
+          <div className="p-3.5 sm:p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-lg bg-[#9670FF]/15 border border-[#9670FF]/40 text-[#B397FF] flex items-center justify-center shrink-0">
                   <Sliders className="w-4 h-4" />
                 </div>
-                <div>
-                  <h4 className="text-sm font-medium text-[#F7F4EC]">
+                <div className="min-w-0">
+                  <h4 className="text-sm font-medium text-[#F7F4EC] truncate">
                     Shared Playback Controls
                   </h4>
-                  <p className="text-[13px] text-[#CDBF9F] leading-tight mt-0.5">
+                  <p className="text-xs text-[#CDBF9F] leading-tight mt-0.5">
                     {room.allowGuestControl
-                      ? 'All participants can play, pause, seek, and change video'
-                      : 'Restricted: Only Host and Co-Hosts can control video'}
+                      ? 'All members can control video'
+                      : 'Host and Co-Hosts only'}
                   </p>
                 </div>
               </div>
@@ -192,7 +235,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                   />
                 </button>
               ) : (
-                <Badge variant={room.allowGuestControl ? 'success' : 'default'} className="text-xs">
+                <Badge variant={room.allowGuestControl ? 'success' : 'default'} className="text-xs shrink-0">
                   {room.allowGuestControl ? 'Enabled' : 'Host Only'}
                 </Badge>
               )}
@@ -201,20 +244,20 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
 
           {/* Voice Call Initiation Permission */}
           {onToggleGuestCall && (
-            <div className="p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-[#091B15] border border-[#E8DDC5]/14">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-8 h-8 rounded-lg bg-[#9670FF]/15 border border-[#9670FF]/40 text-[#B397FF] flex items-center justify-center shrink-0">
                     <PhoneCall className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-[#F7F4EC]">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-medium text-[#F7F4EC] truncate">
                       Voice Call Initiation
                     </h4>
-                    <p className="text-[13px] text-[#CDBF9F] leading-tight mt-0.5">
+                    <p className="text-xs text-[#CDBF9F] leading-tight mt-0.5">
                       {room.allowGuestCall
-                        ? 'All participants can start a new voice call'
-                        : 'Restricted: Only Host and Co-Hosts can start calls (others can join)'}
+                        ? 'All members can start calls'
+                        : 'Host and Co-Hosts only'}
                     </p>
                   </div>
                 </div>
@@ -238,7 +281,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                     />
                   </button>
                 ) : (
-                  <Badge variant={room.allowGuestCall ? 'success' : 'default'} className="text-xs">
+                  <Badge variant={room.allowGuestCall ? 'success' : 'default'} className="text-xs shrink-0">
                     {room.allowGuestCall ? 'Enabled' : 'Host Only'}
                   </Badge>
                 )}
@@ -295,12 +338,12 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
               return (
                 <div
                   key={member.userId}
-                  className="p-3 sm:p-3.5 flex items-center justify-between gap-3 text-xs"
+                  className="p-3 sm:p-3.5 flex items-center justify-between gap-2.5 text-xs"
                 >
                   {/* Left: User Info */}
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className="relative shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-[#173D30] border border-[#E8DDC5]/20 flex items-center justify-center text-[#F7F4EC] font-semibold font-serif">
+                      <div className="w-8 h-8 rounded-full bg-[#173D30] border border-[#E8DDC5]/20 flex items-center justify-center text-[#F7F4EC] font-semibold font-serif text-sm">
                         {member.username.slice(0, 1).toUpperCase()}
                       </div>
                       <span
@@ -311,41 +354,37 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                       />
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium text-[#F7F4EC] truncate max-w-[130px] sm:max-w-[180px]">
-                          {member.username}
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span className="font-medium text-sm text-[#F7F4EC] truncate">
+                        {member.username}
+                      </span>
+                      {isSelf && (
+                        <span className="text-xs text-[#CDBF9F]/75 shrink-0 font-medium">
+                          (You)
                         </span>
-                        {isSelf && (
-                          <span className="text-xs font-mono text-[#CDBF9F]/90">
-                            (You)
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {isRoomHost ? (
-                          <Badge variant="purple" dot className="py-0 px-2">
-                            <Crown className="w-3 h-3 mr-0.5" />
-                            Host
-                          </Badge>
-                        ) : isCoHost ? (
-                          <Badge variant="success" dot className="py-0 px-2">
-                            <ShieldCheck className="w-3 h-3 mr-0.5" />
-                            Co-Host
-                          </Badge>
-                        ) : isRestrictedViewer ? (
-                          <Badge variant="warning" className="py-0 px-2">
-                            View-Only
-                          </Badge>
-                        ) : (
-                          <Badge variant="default" className="py-0 px-2 text-[#CDBF9F]">
-                            Viewer
-                          </Badge>
-                        )}
-                        <span className="text-xs text-[#CDBF9F]/85">
-                          {isOnline ? 'Connected' : 'Offline'}
+                      )}
+                      {isRoomHost ? (
+                        <Badge variant="purple" className="py-0.5 px-2 text-[11px] font-medium shrink-0">
+                          Host
+                        </Badge>
+                      ) : isCoHost ? (
+                        <Badge variant="success" className="py-0.5 px-2 text-[11px] font-medium shrink-0">
+                          Co-Host
+                        </Badge>
+                      ) : isRestrictedViewer ? (
+                        <Badge variant="warning" className="py-0.5 px-2 text-[11px] shrink-0">
+                          View-Only
+                        </Badge>
+                      ) : (
+                        <Badge variant="default" className="py-0.5 px-2 text-[11px] text-[#CDBF9F] shrink-0">
+                          Viewer
+                        </Badge>
+                      )}
+                      {!isOnline && (
+                        <span className="text-[11px] text-[#CDBF9F]/60 shrink-0">
+                          Offline
                         </span>
-                      </div>
+                      )}
                     </div>
                   </div>
 
@@ -361,7 +400,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             type="button"
                             disabled={isBusy}
                             onClick={() => handleKick(member.userId)}
-                            className="px-2.5 py-1 rounded bg-[#DC2626] hover:bg-[#B91C1C] text-[#F7F4EC] text-[13px] font-semibold cursor-pointer disabled:opacity-50"
+                            className="px-2.5 py-1 rounded bg-[#DC2626] hover:bg-[#B91C1C] text-[#F7F4EC] text-xs font-semibold cursor-pointer disabled:opacity-50"
                           >
                             {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Yes, Kick'}
                           </button>
@@ -369,7 +408,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             type="button"
                             disabled={isBusy}
                             onClick={() => setConfirmKickId(null)}
-                            className="px-2 py-1 text-[#CDBF9F] hover:text-[#F7F4EC] text-[13px] cursor-pointer"
+                            className="px-2 py-1 text-[#CDBF9F] hover:text-[#F7F4EC] text-xs cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -383,7 +422,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                               size="sm"
                               disabled={isBusy}
                               onClick={() => handleRoleChange(member.userId, member.role)}
-                              className="h-8 px-2.5 rounded-lg text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#173D30]/60 hover:bg-[#1E4B3C]"
+                              className="h-7.5 px-2.5 rounded-lg text-xs text-[#E8DDC5] hover:text-[#F7F4EC] bg-[#173D30]/60 hover:bg-[#1E4B3C]"
                               leftIcon={
                                 isBusy && actionLoadingId === `role-${member.userId}` ? (
                                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -406,7 +445,7 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
                             size="sm"
                             disabled={isBusy}
                             onClick={() => setConfirmKickId(member.userId)}
-                            className="h-8 px-2.5 rounded-lg text-[#E87A70] hover:text-[#FF8E85] hover:bg-[#DC2626]/10"
+                            className="h-7.5 px-2 rounded-lg text-xs text-[#E87A70] hover:text-[#FF8E85] hover:bg-[#DC2626]/10"
                             leftIcon={<UserX className="w-3.5 h-3.5 text-[#E87A70]" />}
                             title="Remove participant from room"
                           >
@@ -421,13 +460,9 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
             })}
           </div>
         </div>
-
-        {/* Footer Note */}
-        <p className="text-[13px] text-[#CDBF9F]/85 text-center leading-relaxed">
-          Kicked participants are disconnected immediately. If they rejoin, they are permanently locked to view-only access (no Co-Host or Shared Controls).
-        </p>
-      </div>
-    </Modal>
+        </div>
+      </aside>
+    </div>
   );
 };
 

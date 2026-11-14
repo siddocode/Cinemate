@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { extractYouTubeId } from '@/lib/utils/youtube';
@@ -9,7 +8,7 @@ import { storageService } from '@/lib/services/storageService';
 import { bandwidthService, BandwidthMetrics } from '@/lib/services/bandwidthService';
 import { useSession } from '@/hooks/useSession';
 import { VideoSourceType } from '@/core/types/player.types';
-import { Tv, Link as LinkIcon, Upload, Check, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Tv, Link as LinkIcon, Upload, Check, AlertCircle, ShieldAlert, X, Film } from 'lucide-react';
 
 interface ChangeVideoModalProps {
   isOpen: boolean;
@@ -31,7 +30,6 @@ export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = (props) => {
 };
 
 const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
-  isOpen,
   onClose,
   roomId,
   currentVideoUrl,
@@ -178,15 +176,63 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isUploading) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isUploading]);
+
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      preventClose={isUploading}
-      title="Select Video Source"
-      description="Load a YouTube link, direct streaming URL, or personal clip up to 50MB."
+    <div
+      className="fixed inset-0 z-50 flex justify-end pointer-events-none"
+      role="dialog"
+      aria-modal="true"
+      data-prevent-close={isUploading /* preventClose={isUploading} */}
     >
-      <div className="space-y-5">
+      {/* Soft non-intrusive backdrop on mobile (tap to close); hidden on desktop so video remains clickable */}
+      <div
+        className="absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] transition-opacity drawer-backdrop pointer-events-auto lg:hidden"
+        onClick={() => {
+          if (!isUploading) onClose();
+        }}
+        aria-hidden="true"
+      />
+
+      {/* Cinema slide-over side drawer */}
+      <aside className="relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] drawer-enter pointer-events-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-[#E8DDC5]/12 px-4 py-3.5 shrink-0 bg-[#0E281F]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#9670FF]/35 bg-[#9670FF]/12 text-[#B397FF]">
+              <Film className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg sm:text-xl font-semibold leading-tight text-[#F7F4EC] truncate">
+                Select Video Source
+              </h2>
+              <p className="text-xs text-[#CDBF9F]/85 truncate mt-0.5">
+                Load a YouTube link, direct streaming URL, or personal clip up to 50MB.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isUploading}
+            className="rounded-full p-1.5 text-[#CDBF9F] hover:bg-[#173D30] hover:text-[#F7F4EC] transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+            aria-label="Close video source selector"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
         {/* Dark pill switcher */}
         <div className="grid grid-cols-3 p-1 bg-[#173D30] rounded-full text-[13px]">
           <button
@@ -423,7 +469,8 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
             </div>
           </form>
         )}
-      </div>
-    </Modal>
+        </div>
+      </aside>
+    </div>
   );
 };

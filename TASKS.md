@@ -87,7 +87,7 @@
 
 ## Phase 8 — End-to-End Authentication Architecture & Favourites
 - [x] Perform complete root-cause audit of authentication issues, route protection, and session persistence.
-- [x] Create Next.js root middleware (`src/middleware.ts`) and enhance `updateSession()` in `src/lib/supabase/middleware.ts`.
+- [x] Create Next.js root proxy (`src/proxy.ts`, migrated from `src/middleware.ts` per Next.js 16 convention) and enhance `updateSession()` in `src/lib/supabase/middleware.ts`.
 - [x] Protect all private routes (`/`, `/room/*`) and redirect unauthenticated users to `/login?redirect=...`.
 - [x] Implement authenticated route redirects: redirect authenticated users visiting `/login`, `/register`, or `/auth` to `/` (or target destination).
 - [x] Create Auth Callback Route (`src/app/auth/callback/route.ts`) for `@supabase/ssr` code exchange and cookie restoration.
@@ -298,3 +298,25 @@
 - [x] Modals (ChangeVideo, Participants, YouTubeQueue): tabs/alerts/meta 13–12px; strip Badge/Button size overrides; Navbar/AuthForm small text raised; delete Button call-site `text-xs` overrides (Navbar, VoiceCallBar, RoomHeader, RoomView, FavoritesSection).
 - [x] Verify `npx tsc --noEmit`, `npm run lint`, `npm test` (96/96), and `npm run build`.
 - [x] Visual QA: room header/chat/queue/player/voice bar, browse & queue modal add badges, button sizing at desktop/tablet/mobile.
+
+---
+
+## Phase 20 — Mobile UX Decluttering & Smooth Room Experience ✅
+- [x] Streamline `RoomParticipantsModal`: drop redundant modal description and footer essay; shorten toggle descriptions; put avatar, name, `(You)`, and role badge on one single horizontal row (`flex items-center gap-2`).
+- [x] Re-architect `YouTubeQueueModal`: convert from disruptive center `<Modal>` to an expandable cinema slide-over side drawer with soft backdrop, leaving the active video playing unobstructed.
+- [x] Implement sticky floating bottom bar in `YouTubeQueueModal`: selection count and `Add to Queue` button are permanently docked above the fold, completely eliminating the need to scroll through results to add videos.
+- [x] Support seamless bidirectional navigation between `RoomQueuePanel` and `YouTubeQueueModal` via `onBackToQueue`.
+- [x] Remove empty-state system chat welcome bubble from `useChat` to maximize vertical space for real messages.
+- [x] Add mobile Chat toggle button in `RoomHeader` and mobile overflow menu.
+- [x] Add mobile-visible header in `ChatContainer` with smooth `ChevronDown` minimize button; slim reaction strip.
+- [x] Optimize `RoomView` mobile layout: allow video to expand to full Cinema view when chat is minimized; show floating mobile `[💬 Chat]` pill to reopen.
+- [x] Implement draggable watch queue in `RoomQueuePanel`: HTML5 drag & drop and touch drag support with `GripVertical` handle, visual drop ring indicators, and optimistic reordering via `queueService.reorderItems` and `useRoomQueue.reorder`.
+- [x] Eliminate visual flash when opening Add to Queue: unify the YouTube discovery and search directly inside `RoomQueuePanel`, keep the side drawer and backdrop persistently mounted, add smooth `.drawer-enter` right-side slide animations, and provide seamless 1-tap view switching without backdrop or container tear-down.
+- [x] Fix screening header breaking: streamline `RoomHeader.tsx` so all controls (`room.title`, `room.code`, `Save`, `Online/Waiting`, `Queue`, `Media`, `Voice`, `Leave`) fit cleanly on one single line across viewports with zero horizontal overflow.
+- [x] Convert all room popup modals to sidebar drawers: migrate `ChangeVideoModal.tsx` ("Media / URL") and `RoomParticipantsModal.tsx` ("Members & Permissions") to right slide-over drawers so active video playback is never covered or interrupted.
+- [x] Implement desktop video auto-shrink alongside drawers: in `RoomView.tsx`, the left video stage dynamically shrinks (`transition-all duration-300 ease-out` with `lg:mr-[32rem] xl:mr-[36rem]`), chat is cleanly swapped out (`lg:hidden`), and backdrop is hidden on desktop (`lg:hidden`), keeping all video player controls 100% interactive.
+- [x] Implement visibility-aware seen receipts: in `useChat.ts`, only broadcast `CHAT_SEEN` when `document.visibilityState === 'visible'` and `isChatOpen !== false`. If tab is hidden or minimized, queue seen receipt and flush on return.
+- [x] WhatsApp-style instant message status: in `ChatContainer.tsx`, replace `Sending...` spinner with instant single tick (`Check`) on optimistic send, followed by delivered tick, and double green tick (`CheckCheck`) when seen.
+- [x] Mobile background playback & Picture-in-Picture: add `togglePictureInPicture` and `webkit-playsinline` in `UniversalPlayer.tsx` and `HTML5VideoAdapter.ts` for multitasking while room audio and calls continue in the background.
+- [x] YouTube error modal dismiss & cut: add top-right `X` close button, backdrop click-to-dismiss, Escape key handler, and `Dismiss` button in `UniversalPlayer.tsx` so users never need to refresh on playback errors.
+- [x] Verify `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors), `npm test` (96/96 passing).

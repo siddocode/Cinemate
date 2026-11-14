@@ -19,7 +19,9 @@ export function describePlaybackError(
     };
   }
 
-  switch (code) {
+  const numericCode = code != null && !isNaN(Number(code)) ? Number(code) : null;
+
+  switch (numericCode) {
     case 2:
       return {
         code,

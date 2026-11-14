@@ -132,24 +132,27 @@ export function useRoomQueue(roomId?: string) {
     [items, roomId]
   );
 
-  const moveItem = useCallback(
-    async (itemId: string, direction: 'up' | 'down'): Promise<boolean> => {
+  const reorder = useCallback(
+    async (fromIndex: number, toIndex: number): Promise<boolean> => {
       if (!roomId) return false;
-      const index = items.findIndex((item) => item.id === itemId);
-      const targetIndex = direction === 'up' ? index - 1 : index + 1;
-
-      if (index < 0 || targetIndex < 0 || targetIndex >= items.length) {
+      if (
+        fromIndex < 0 ||
+        fromIndex >= items.length ||
+        toIndex < 0 ||
+        toIndex >= items.length ||
+        fromIndex === toIndex
+      ) {
         return false;
       }
 
       const snapshot = items;
       const next = [...items];
-      const [moved] = next.splice(index, 1);
-      next.splice(targetIndex, 0, moved);
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
       const positioned = next.map((item, position) => ({ ...item, position }));
 
       setItems(positioned);
-      setBusyItemId(itemId);
+      setBusyItemId(moved.id);
       setError(null);
 
       try {
@@ -169,6 +172,21 @@ export function useRoomQueue(roomId?: string) {
       }
     },
     [items, roomId]
+  );
+
+  const moveItem = useCallback(
+    async (itemId: string, direction: 'up' | 'down'): Promise<boolean> => {
+      if (!roomId) return false;
+      const index = items.findIndex((item) => item.id === itemId);
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+      if (index < 0 || targetIndex < 0 || targetIndex >= items.length) {
+        return false;
+      }
+
+      return reorder(index, targetIndex);
+    },
+    [items, reorder, roomId]
   );
 
   const clearQueue = useCallback(async (): Promise<boolean> => {
@@ -198,6 +216,7 @@ export function useRoomQueue(roomId?: string) {
     addItems,
     removeItem,
     moveItem,
+    reorder,
     clearQueue,
     setError,
   };

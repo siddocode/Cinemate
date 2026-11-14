@@ -11,6 +11,7 @@ import {
   Volume2,
   X,
   ListVideo,
+  MessageSquare,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { useSession } from '@/hooks/useSession';
@@ -88,6 +89,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     addItems: addQueueItems,
     removeItem: removeQueueItem,
     moveItem: moveQueueItem,
+    reorder: reorderQueueItem,
   } = useRoomQueue(room?.id);
 
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
@@ -96,6 +98,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isYouTubeQueueOpen, setIsYouTubeQueueOpen] = useState(false);
+  const isAnyDrawerOpen =
+    isChangeVideoOpen || isParticipantsOpen || isQueueOpen || isYouTubeQueueOpen;
   const [isVoiceAutoDuckEnabled, setIsVoiceAutoDuckEnabled] = useState(true);
   const [autoPlayNext, setAutoPlayNext] = useState(false);
   const [nowPlayingTitle, setNowPlayingTitle] = useState<string | null>(null);
@@ -373,7 +377,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onOpenParticipants={() => setIsParticipantsOpen(true)}
         onCloseRoom={isHost ? closeRoom : undefined}
         isChatOpen={isChatOpen}
-        onToggleChat={() => setIsChatOpen(true)}
+        onToggleChat={() => setIsChatOpen((prev) => !prev)}
         queueCount={queueItems.length}
         onOpenQueue={() => setIsQueueOpen(true)}
         voiceCall={{
@@ -441,9 +445,21 @@ export const RoomView: React.FC<RoomViewProps> = ({
 
       {/* Main Theater Split: Full-Stage Video Centerpiece + Independently Scrollable Chat Lounge */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left/Top Stage: Video Centerpiece */}
-        <div className="shrink-0 lg:shrink lg:flex-1 lg:min-w-0 lg:min-h-0 flex flex-col bg-[#091B15] px-3 pt-2.5 pb-2 sm:px-5 sm:pt-3.5 sm:pb-2.5 lg:p-3">
-          <div className="w-full max-w-[calc(36dvh*16/9)] sm:max-w-[calc(40dvh*16/9)] lg:max-w-none lg:flex-1 lg:min-h-0 mx-auto flex flex-col">
+        {/* Left/Top Stage: Video Centerpiece (smoothly shrinks when right drawer expands) */}
+        <div
+          className={`shrink-0 lg:shrink lg:flex-1 lg:min-w-0 lg:min-h-0 flex flex-col bg-[#091B15] transition-all duration-300 ease-out ${
+            isChatOpen
+              ? 'px-3 pt-2 pb-1.5 sm:px-5 sm:pt-3.5 sm:pb-2.5 lg:p-3'
+              : 'flex-1 min-h-0 p-3 sm:p-5 lg:p-3 justify-center'
+          } ${isAnyDrawerOpen ? 'lg:mr-[32rem] xl:mr-[36rem]' : ''}`}
+        >
+          <div
+            className={`w-full mx-auto flex flex-col ${
+              isChatOpen
+                ? 'max-w-[calc(30dvh*16/9)] sm:max-w-[calc(38dvh*16/9)] lg:max-w-none lg:flex-1 lg:min-h-0'
+                : 'max-w-none flex-1 min-h-0 justify-center'
+            }`}
+          >
             {/* Screening Frame (16:9 on mobile/tablet, full available theater space on lg+) */}
             {room.videoUrl ? (
               <UniversalPlayer
@@ -468,7 +484,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 isInVoiceCall={voiceCall.isInCall}
                 isVoiceAutoDuckEnabled={isVoiceAutoDuckEnabled}
                 isVoiceSpeaking={voiceCall.isLocalSpeaking || voiceCall.isPeerSpeaking}
-                className="lg:aspect-auto lg:flex-1 lg:min-h-0"
+                className={isChatOpen ? 'lg:aspect-auto lg:flex-1 lg:min-h-0' : 'aspect-video lg:aspect-auto flex-1 min-h-0 max-h-[82dvh]'}
               />
             ) : (
               <div className="relative w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-[#0D251C] rounded-xl border border-[#E8DDC5]/16 overflow-hidden shadow-[0_24px_70px_rgba(0,0,0,0.55)] flex flex-col items-center justify-center text-center p-4 sm:p-6">
@@ -506,7 +522,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
             )}
 
             {/* Streamlined screening telemetry (Joiners and Upload / URL consolidated in RoomHeader to eliminate duplicates) */}
-            <div className="mt-2 shrink-0 flex items-center justify-between gap-3 text-xs text-[#CDBF9F]/85 px-1">
+            <div className="mt-1.5 sm:mt-2 shrink-0 flex items-center justify-between gap-3 text-xs text-[#CDBF9F]/85 px-1">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#7AD3A8] shrink-0" />
                 <span className="font-mono uppercase tracking-[0.12em] text-[#CDBF9F] truncate">
@@ -545,25 +561,41 @@ export const RoomView: React.FC<RoomViewProps> = ({
 
         {/* Right/Bottom Lounge: Independently Scrollable Persistent Realtime Chat */}
         {isChatOpen && (
-          <ChatContainer
-            roomId={room.id}
-            user={user}
-            partnerName={partnerLabel}
-            channel={channel}
-            members={members}
-            presenceList={presenceList}
-            initialHistory={initialChatHistory}
-            onCollapse={() => setIsChatOpen(false)}
-            voiceSection={
-              <VoiceCallBar
-                variant="sidebar"
-                {...sharedVoiceBarProps}
-                className="hidden lg:block"
-              />
-            }
-          />
+          <div className={`h-full flex ${isAnyDrawerOpen ? 'lg:hidden' : ''}`}>
+            <ChatContainer
+              roomId={room.id}
+              user={user}
+              partnerName={partnerLabel}
+              channel={channel}
+              members={members}
+              presenceList={presenceList}
+              initialHistory={initialChatHistory}
+              isChatOpen={isChatOpen && !isAnyDrawerOpen}
+              onCollapse={() => setIsChatOpen(false)}
+              voiceSection={
+                <VoiceCallBar
+                  variant="sidebar"
+                  {...sharedVoiceBarProps}
+                  className="hidden lg:block"
+                />
+              }
+            />
+          </div>
         )}
       </div>
+
+      {/* Floating Mobile Chat Reopen Pill when Chat is Minimized */}
+      {!isChatOpen && (
+        <button
+          type="button"
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-4 right-4 z-30 lg:hidden flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#173D30] border border-[#9670FF]/60 text-[#F7F4EC] shadow-[0_8px_24px_rgba(0,0,0,0.6)] hover:bg-[#1E4B3C] active:scale-95 transition-all text-xs font-semibold cursor-pointer"
+          aria-label="Open chat"
+        >
+          <MessageSquare className="w-4 h-4 text-[#9670FF]" />
+          <span>Chat</span>
+        </button>
+      )}
 
       {/* Change Video Modal */}
       <ChangeVideoModal
@@ -606,6 +638,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onPlay={(item) => void playQueueItem(item)}
         onRemove={(item) => void removeQueueItem(item.id)}
         onMove={(item, direction) => void moveQueueItem(item.id, direction)}
+        onReorder={(fromIndex, toIndex) => void reorderQueueItem(fromIndex, toIndex)}
+        onAddVideosToQueue={handleQueueAdd}
         onAddVideos={() => {
           setIsQueueOpen(false);
           setIsYouTubeQueueOpen(true);
@@ -616,6 +650,10 @@ export const RoomView: React.FC<RoomViewProps> = ({
         isOpen={isYouTubeQueueOpen}
         onClose={() => setIsYouTubeQueueOpen(false)}
         onAdd={handleQueueAdd}
+        onBackToQueue={() => {
+          setIsYouTubeQueueOpen(false);
+          setIsQueueOpen(true);
+        }}
       />
     </div>
   );

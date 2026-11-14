@@ -42,6 +42,7 @@ interface UseChatProps {
   members?: RoomMember[];
   presenceList?: ParticipantPresence[];
   initialHistory?: InitialChatHistory;
+  isChatOpen?: boolean;
 }
 
 interface PendingMessageEntry {
@@ -60,11 +61,58 @@ export function useChat({
   members,
   presenceList,
   initialHistory,
+  isChatOpen = true,
 }: UseChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [partnerTyping, setPartnerTyping] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [welcomeTimestamp] = useState<string>(() => new Date().toISOString());
+  const lastUnseenMessageRef = useRef<{ id: string; time: string } | null>(null);
+
+  const isChatVisibleAndActive = useCallback(() => {
+    if (typeof document === 'undefined') return false;
+    if (document.visibilityState !== 'visible') return false;
+    if (isChatOpen === false) return false;
+    return true;
+  }, [isChatOpen]);
+
+  const broadcastSeenReceipt = useCallback(
+    (messageId: string, messageTime?: string) => {
+      if (!channel || !user.id) return;
+      void channel
+        .send({
+          type: 'broadcast',
+          event: 'CHAT_SEEN',
+          payload: {
+            roomId,
+            userId: user.id,
+            username: user.username,
+            lastSeenMessageId: messageId,
+            seenAt: messageTime || new Date().toISOString(),
+          },
+        })
+        .catch(() => {});
+    },
+    [channel, roomId, user.id, user.username]
+  );
+
+  useEffect(() => {
+    const checkAndFlushUnseen = () => {
+      if (isChatVisibleAndActive() && lastUnseenMessageRef.current) {
+        const { id, time } = lastUnseenMessageRef.current;
+        lastUnseenMessageRef.current = null;
+        broadcastSeenReceipt(id, time);
+      }
+    };
+
+    document.addEventListener('visibilitychange', checkAndFlushUnseen);
+    window.addEventListener('focus', checkAndFlushUnseen);
+    checkAndFlushUnseen();
+
+    return () => {
+      document.removeEventListener('visibilitychange', checkAndFlushUnseen);
+      window.removeEventListener('focus', checkAndFlushUnseen);
+    };
+  }, [isChatVisibleAndActive, broadcastSeenReceipt]);
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingSentRef = useRef<number>(0);
@@ -209,18 +257,6 @@ export function useChat({
 
           if (history.length > 0) {
             setMessages((prev) => mergeChatHistory(history, prev));
-          } else {
-            // Initial friendly welcome message (preserve any messages already received while loading)
-            const welcome: ChatMessage = {
-              id: 'welcome-msg',
-              roomId,
-              userId: 'system',
-              username: 'Syncora',
-              content: 'Welcome to your watch party! Chat in real-time as you watch together.',
-              type: 'system',
-              createdAt: welcomeTimestamp,
-            };
-            setMessages((prev) => (prev.length > 0 ? prev : [welcome]));
           }
         }
       } catch (err) {
@@ -235,7 +271,7 @@ export function useChat({
     return () => {
       isMounted = false;
     };
-  }, [roomId, usesPrefetchedHistory, welcomeTimestamp, selfJoinedAtMs]);
+  }, [roomId, usesPrefetchedHistory, selfJoinedAtMs]);
 
   const resolvedMessages = useMemo(() => {
     if (!usesPrefetchedHistory || !prefetchedLoaded || !prefetchedMessages) {
@@ -246,28 +282,12 @@ export function useChat({
       return mergeChatHistory(prefetchedMessages, messages);
     }
 
-    if (messages.length > 0) {
-      return messages;
-    }
-
-    return [
-      {
-        id: 'welcome-msg',
-        roomId,
-        userId: 'system',
-        username: 'Syncora',
-        content: 'Welcome to your watch party! Chat in real-time as you watch together.',
-        type: 'system' as const,
-        createdAt: welcomeTimestamp,
-      },
-    ];
+    return messages;
   }, [
     usesPrefetchedHistory,
     prefetchedLoaded,
     prefetchedMessages,
     messages,
-    roomId,
-    welcomeTimestamp,
   ]);
 
   const effectiveIsLoading = usesPrefetchedHistory
@@ -312,19 +332,13 @@ export function useChat({
 
       setMessages((prev) => upsertChatMessage(prev, incomingMsg));
 
-      // Broadcast seen receipt to let sender know their message was received
-      if (payload.userId !== user.id && channel) {
-        void channel.send({
-          type: 'broadcast',
-          event: 'CHAT_SEEN',
-          payload: {
-            roomId,
-            userId: user.id,
-            username: user.username,
-            lastSeenMessageId: payload.id,
-            seenAt: new Date().toISOString(),
-          },
-        }).catch(() => {});
+      // Broadcast seen receipt ONLY if user is actively viewing chat, otherwise queue it
+      if (payload.userId !== user.id) {
+        if (isChatVisibleAndActive()) {
+          broadcastSeenReceipt(payload.id, payload.createdAt);
+        } else {
+          lastUnseenMessageRef.current = { id: payload.id, time: payload.createdAt };
+        }
       }
     };
 
@@ -350,19 +364,13 @@ export function useChat({
 
       setMessages((prev) => upsertChatMessage(prev, incomingMsg));
 
-      // Broadcast seen receipt for incoming row if from another user
-      if (newRow.user_id !== user.id && channel) {
-        void channel.send({
-          type: 'broadcast',
-          event: 'CHAT_SEEN',
-          payload: {
-            roomId,
-            userId: user.id,
-            username: user.username,
-            lastSeenMessageId: newRow.id,
-            seenAt: new Date().toISOString(),
-          },
-        }).catch(() => {});
+      // Broadcast seen receipt ONLY if user is actively viewing chat, otherwise queue it
+      if (newRow.user_id !== user.id) {
+        if (isChatVisibleAndActive()) {
+          broadcastSeenReceipt(newRow.id, newRow.created_at);
+        } else {
+          lastUnseenMessageRef.current = { id: newRow.id, time: newRow.created_at };
+        }
       }
 
       // Only hit profiles table if sender is genuinely absent from member/presence cache
@@ -449,7 +457,15 @@ export function useChat({
       }
       supabase.removeChannel(standaloneChannel);
     };
-  }, [roomId, user.id, user.username, channel, lookupAndCacheProfile]);
+  }, [
+    roomId,
+    user.id,
+    user.username,
+    channel,
+    lookupAndCacheProfile,
+    broadcastSeenReceipt,
+    isChatVisibleAndActive,
+  ]);
 
   // 3. Typing indicator broadcast listener via shared channel
   useEffect(() => {

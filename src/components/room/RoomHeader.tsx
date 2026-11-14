@@ -210,7 +210,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             title={`Voice ${voiceCall.participantCount}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS} (${voiceCall.status})`}
           />
           {!compactMobile && (
-            <span className="hidden xl:inline text-xs font-mono text-[#E8DDC5] px-1 whitespace-nowrap">
+            <span className="hidden 2xl:inline text-xs font-mono text-[#E8DDC5] px-1 whitespace-nowrap">
               {voiceCall.status === 'connected'
                 ? `Voice Call ${voiceCall.participantCount}/${CALL_CONSTANTS.MAX_CALL_PARTICIPANTS}`
                 : voiceCall.status === 'reconnecting'
@@ -445,6 +445,24 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
 
           {renderVoiceControls(true)}
 
+          {/* Mobile Chat Toggle Button */}
+          {onToggleChat && (
+            <button
+              type="button"
+              onClick={onToggleChat}
+              className={`h-8 px-2.5 rounded-full border text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+                isChatOpen
+                  ? 'bg-[#1E4B3C] border-[#9670FF]/50 text-[#F7F4EC]'
+                  : 'bg-[#173D30] border-[#E8DDC5]/20 text-[#E8DDC5] hover:text-[#F7F4EC]'
+              }`}
+              title={isChatOpen ? 'Minimize chat (Full Cinema)' : 'Open chat'}
+              aria-label={isChatOpen ? 'Minimize chat' : 'Open chat'}
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-[#9670FF]" />
+              <span className="hidden xs:inline">Chat</span>
+            </button>
+          )}
+
           <div ref={mobileMenuRef} className="relative">
             <button
               type="button"
@@ -529,6 +547,23 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                   </button>
                 )}
 
+                {onToggleChat && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      onToggleChat();
+                    }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <MessageSquare className="w-4 h-4 text-[#9670FF] shrink-0" />
+                      <span>{isChatOpen ? 'Minimize Chat (Cinema Mode)' : 'Open Chat'}</span>
+                    </span>
+                  </button>
+                )}
+
                 {(canControl ?? isHost) && (
                   <button
                     type="button"
@@ -600,18 +635,18 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       </div>
 
       {/* Desktop Screening Header Bar */}
-      <div className="hidden md:flex min-h-14 px-6 py-2 items-center justify-between gap-4">
+      <div className="hidden md:flex min-h-14 px-4 sm:px-6 py-2 items-center justify-between gap-3 overflow-hidden">
         {/* Left: Room Title, Sand Beige Room Code Pill, Copy Invite & Favorite */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <h1 className="font-serif text-xl font-semibold tracking-tight text-[#F7F4EC] min-w-0 truncate max-w-[240px]">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-shrink">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <h1 className="font-serif text-lg lg:text-xl font-semibold tracking-tight text-[#F7F4EC] min-w-0 truncate max-w-[120px] sm:max-w-[160px] lg:max-w-[200px]">
               {room.title}
             </h1>
 
             <button
               type="button"
               onClick={() => void handleCopyLink()}
-              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold bg-[#E8DDC5] hover:bg-[#F7F4EC] px-2.5 py-1 rounded-full text-[#102B23] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              className="inline-flex items-center gap-1 text-xs font-mono font-semibold bg-[#E8DDC5] hover:bg-[#F7F4EC] px-2 py-0.5 rounded-full text-[#102B23] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               title="Copy room invitation link"
               aria-label="Copy room code and invitation link"
             >
@@ -630,7 +665,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               type="button"
               onClick={handleToggleFavorite}
               disabled={isFavLoading || isLeavingRoom}
-              className={`h-8 px-2.5 rounded-full border text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-55 disabled:pointer-events-none ${
+              className={`h-7.5 px-2 rounded-full border text-xs flex items-center gap-1 transition-colors cursor-pointer shrink-0 disabled:opacity-55 disabled:pointer-events-none ${
                 isFav
                   ? 'bg-[#292214] border-[#E9B872]/40 text-[#F0C987]'
                   : 'bg-[#173D30] border-[#E8DDC5]/18 text-[#CDBF9F] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/35'
@@ -639,15 +674,15 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               aria-label={isFav ? 'Remove from Favorites' : 'Save to Favorites'}
             >
               {isFavLoading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <Star
-                  className={`w-3.5 h-3.5 ${
+                  className={`w-3 h-3 ${
                     isFav ? 'fill-[#E9B872] text-[#E9B872]' : ''
                   }`}
                 />
               )}
-              <span className="hidden xl:inline">
+              <span className="hidden 2xl:inline">
                 {isFavLoading ? 'Saving…' : isFav ? 'Saved' : 'Save'}
               </span>
             </button>
@@ -655,7 +690,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
         </div>
 
         {/* Right: Participant Presence, Role & Room Controls */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {others.length === 0 ? (
             <button
               type="button"
@@ -663,32 +698,32 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               className="cursor-pointer transition-opacity hover:opacity-90 shrink-0"
               title="View participants or invite friends"
             >
-              <Badge variant="warning" dot className="whitespace-nowrap">
-                {copied ? 'Invite Link Copied' : 'Waiting for Viewers · Invite'}
+              <Badge variant="warning" dot className="whitespace-nowrap text-xs">
+                {copied ? 'Invite Copied' : 'Invite Friends'}
               </Badge>
             </button>
           ) : (
             <button
               type="button"
               onClick={onOpenParticipants}
-              className="cursor-pointer transition-opacity hover:opacity-90 min-w-0 text-left"
+              className="cursor-pointer transition-opacity hover:opacity-90 min-w-0 text-left shrink-0"
               title={`Online (${totalOnline}/${SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}): You, ${otherNames}. Click to manage.`}
             >
               <Badge
                 variant="success"
                 dot
-                className="max-w-[220px] truncate whitespace-nowrap cursor-pointer"
+                className="max-w-[140px] lg:max-w-[180px] xl:max-w-[220px] truncate whitespace-nowrap cursor-pointer text-xs"
               >
                 {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS} Online · {otherNames}
               </Badge>
             </button>
           )}
 
-          {/* User Role */}
+          {/* User Role Badge */}
           <Badge
             variant={isHost ? 'purple' : isCoHost ? 'success' : 'default'}
             dot={isHost || isCoHost}
-            className="hidden lg:inline-flex"
+            className="hidden 2xl:inline-flex text-xs"
           >
             {isHost ? 'Host' : isCoHost ? 'Co-Host' : 'Viewer'}
           </Badge>
@@ -698,12 +733,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               variant="outline"
               size="sm"
               onClick={onOpenQueue}
-              className="h-8 px-3 rounded-full relative"
+              className="h-8 px-2.5 sm:px-3 rounded-full relative whitespace-nowrap"
               leftIcon={<ListVideo className="w-3.5 h-3.5 text-[#9670FF]" />}
               title="Open the shared watch queue"
               aria-label="Open watch queue"
             >
-              Queue
+              <span>Queue</span>
               {queueCount > 0 && (
                 <span className="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[#9670FF] px-1 text-[11px] font-bold text-[#0B1E18]">
                   {queueCount}
@@ -718,12 +753,13 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               variant="primary"
               size="sm"
               onClick={onChangeVideoClick}
-              className="h-8 px-3 rounded-full"
+              className="h-8 px-2.5 sm:px-3 rounded-full whitespace-nowrap"
               leftIcon={<Film className="w-3.5 h-3.5" />}
               title="Load YouTube link, video URL, or upload a movie file to watch together"
               aria-label="Load watch media or upload video"
             >
-              Media / URL
+              <span className="hidden xl:inline">Media / URL</span>
+              <span className="xl:hidden">Media</span>
             </Button>
           )}
 
@@ -736,7 +772,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               size="sm"
               onClick={onToggleChat}
               disabled={isLeavingRoom}
-              className="h-8 rounded-full hidden lg:inline-flex"
+              className="h-8 px-2.5 rounded-full hidden xl:inline-flex"
               leftIcon={<MessageSquare className="w-3.5 h-3.5 text-[#9670FF]" />}
             >
               Chat
@@ -749,7 +785,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             size="sm"
             onClick={() => void handleLeaveRoom()}
             disabled={isLeavingRoom}
-            className="h-8 w-8 p-0 rounded-full text-[#CDBF9F] hover:text-[#F2B8B2] hover:bg-[#3A1E1C]/60"
+            className="h-8 w-8 p-0 rounded-full text-[#CDBF9F] hover:text-[#F2B8B2] hover:bg-[#3A1E1C]/60 shrink-0"
             title={isHost ? 'Close & Leave Room' : 'Leave Room'}
             aria-label={isHost ? 'Close and leave screening room' : 'Leave screening room'}
           >

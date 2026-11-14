@@ -8,12 +8,14 @@ import {
   VolumeX,
   Maximize,
   Minimize,
+  PictureInPicture,
   Volume1,
   RotateCcw,
   Film,
   Loader2,
   AlertTriangle,
   ExternalLink,
+  X,
 } from 'lucide-react';
 import { IVideoPlayerAdapter, VideoSourceType } from '@/core/types/player.types';
 import { YouTubePlayerAdapter } from '@/core/adapters/YouTubePlayerAdapter';
@@ -120,6 +122,17 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
   useEffect(() => {
     onPlayerErrorRef.current = onPlayerError;
   }, [onPlayerError]);
+
+  useEffect(() => {
+    if (!playerError) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPlayerError(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [playerError]);
 
   // Synchronization engine integration
   const { isSynced, driftSeconds, requestSync } = useSyncEngine({
@@ -386,6 +399,86 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
     }
   };
 
+  const togglePictureInPicture = async () => {
+    try {
+      // 1. Direct HTML5 <video> PiP (Direct MP4/WebM URLs and local uploads)
+      const videoEl = containerRef.current?.querySelector('video');
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        return;
+      }
+      if (videoEl && 'requestPictureInPicture' in videoEl) {
+        await videoEl.requestPictureInPicture();
+        return;
+      }
+
+      // 2. Document Picture-in-Picture API (Chrome 116+ for YouTube and full custom UI)
+      if (typeof window !== 'undefined' && 'documentPictureInPicture' in window) {
+        const dpip = (window as unknown as {
+          documentPictureInPicture: {
+            window: Window | null;
+            requestWindow: (options: { width: number; height: number }) => Promise<Window>;
+          };
+        }).documentPictureInPicture;
+
+        if (dpip.window) {
+          dpip.window.close();
+          return;
+        }
+
+        if (playerWrapperRef.current) {
+          const pipWin = await dpip.requestWindow({ width: 640, height: 360 });
+          // Copy active stylesheets
+          Array.from(document.styleSheets).forEach((sheet) => {
+            try {
+              const rules = Array.from(sheet.cssRules).map((r) => r.cssText).join('');
+              const style = document.createElement('style');
+              style.textContent = rules;
+              pipWin.document.head.appendChild(style);
+            } catch {
+              if (sheet.href) {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = sheet.href;
+                pipWin.document.head.appendChild(link);
+              }
+            }
+          });
+
+          const elem = playerWrapperRef.current;
+          const parent = elem.parentElement;
+          const placeholder = document.createElement('div');
+          placeholder.id = 'pip-return-placeholder';
+          parent?.insertBefore(placeholder, elem);
+
+          pipWin.document.body.style.margin = '0';
+          pipWin.document.body.style.backgroundColor = '#000';
+          pipWin.document.body.appendChild(elem);
+
+          pipWin.addEventListener('pagehide', () => {
+            if (placeholder.parentElement) {
+              placeholder.parentElement.insertBefore(elem, placeholder);
+              placeholder.remove();
+            }
+          });
+          return;
+        }
+      }
+
+      // 3. Helpful guidance for mobile browsers restricting cross-origin iframe PiP
+      if (videoType === 'youtube') {
+        setViewerAlert('On mobile, tap Fullscreen (⛶) and swipe home to watch in Picture-in-Picture.');
+        setTimeout(() => setViewerAlert(null), 4500);
+      }
+    } catch (err) {
+      console.warn('[Syncora] Picture-in-picture error:', err);
+      if (videoType === 'youtube') {
+        setViewerAlert('On mobile, tap Fullscreen (⛶) and swipe home to watch in Picture-in-Picture.');
+        setTimeout(() => setViewerAlert(null), 4500);
+      }
+    }
+  };
+
   const triggerViewerAlert = () => {
     setViewerAlert(`${hostName} is controlling playback. Your screen stays in sync.`);
     setTimeout(() => setViewerAlert(null), 3000);
@@ -442,8 +535,27 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
       )}
 
       {playerError && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#071611]/92 p-4 text-center">
-          <div className="max-w-sm w-full rounded-2xl border border-[#E87A70]/35 bg-[#1A1211] p-5 shadow-2xl cinema-enter">
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center bg-[#071611]/88 backdrop-blur-[2px] p-4 text-center cursor-pointer"
+          onClick={() => setPlayerError(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="max-w-sm w-full relative rounded-2xl border border-[#E87A70]/35 bg-[#1A1211] p-5 shadow-2xl cinema-enter cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top-Right Cut (X) Button */}
+            <button
+              type="button"
+              onClick={() => setPlayerError(null)}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-[#CDBF9F] hover:text-[#F7F4EC] hover:bg-[#E8DDC5]/10 transition-colors cursor-pointer"
+              aria-label="Dismiss error"
+              title="Close message"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
             <div className="w-10 h-10 rounded-xl bg-[#3A1E1C] border border-[#E87A70]/35 text-[#F2B8B2] flex items-center justify-center mx-auto mb-3">
               <AlertTriangle className="w-5 h-5" />
             </div>
@@ -459,19 +571,30 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
                   href={getYouTubeWatchUrl(videoUrl) || '#'}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#E8DDC5]/25 px-3 py-2 text-[13px] font-semibold text-[#E8DDC5] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/45 transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#E8DDC5]/25 px-3 py-2 text-[13px] font-semibold text-[#E8DDC5] hover:text-[#F7F4EC] hover:border-[#E8DDC5]/45 transition-colors cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   Watch on YouTube
                 </a>
               )}
-              {hasControl && onChangeVideoClick && (
+              {hasControl && onChangeVideoClick ? (
                 <button
                   type="button"
-                  onClick={onChangeVideoClick}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#7235A8] hover:bg-[#8342BE] px-3 py-2 text-[13px] font-semibold text-[#F7F4EC] transition-colors"
+                  onClick={() => {
+                    setPlayerError(null);
+                    onChangeVideoClick();
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#7235A8] hover:bg-[#8342BE] px-3.5 py-2 text-[13px] font-semibold text-[#F7F4EC] transition-colors cursor-pointer"
                 >
                   Choose another video
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPlayerError(null)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#E8DDC5]/20 bg-[#173D30] hover:bg-[#1E4B3C] px-3.5 py-2 text-[13px] font-semibold text-[#F7F4EC] transition-colors cursor-pointer"
+                >
+                  Dismiss
                 </button>
               )}
             </div>
@@ -498,13 +621,24 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
             <Badge
               variant="purple"
               dot
-              className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC]"
+              className="bg-[#0E281F]/90 border-[#9670FF]/50 text-[#F7F4EC] text-[11px] sm:text-xs py-0 sm:py-0.5"
             >
-              {isHost
-                ? 'Host Authority'
-                : hasControl
-                ? `Shared Control · ${hostName}`
-                : `Synced · ${hostName}`}
+              {isHost ? (
+                <>
+                  <span className="sm:hidden">Host</span>
+                  <span className="hidden sm:inline">Host Authority</span>
+                </>
+              ) : hasControl ? (
+                <>
+                  <span className="sm:hidden">Control</span>
+                  <span className="hidden sm:inline">Shared Control · {hostName}</span>
+                </>
+              ) : (
+                <>
+                  <span className="sm:hidden">Synced</span>
+                  <span className="hidden sm:inline">Synced · {hostName}</span>
+                </>
+              )}
             </Badge>
 
             <Badge
@@ -640,6 +774,17 @@ export const UniversalPlayer: React.FC<UniversalPlayerProps> = ({
                   className="w-14 sm:w-20 h-1 bg-[#E8DDC5]/25 rounded-full accent-[#9670FF] cursor-pointer"
                 />
               </div>
+
+              {/* Picture-in-Picture Toggle */}
+              <button
+                type="button"
+                onClick={() => void togglePictureInPicture()}
+                aria-label="Toggle Picture-in-Picture"
+                className="p-1 text-[#E8DDC5] hover:text-[#F7F4EC] transition-colors cursor-pointer"
+                title="Picture-in-Picture (watch while multitasking)"
+              >
+                <PictureInPicture className="w-4 h-4" />
+              </button>
 
               {/* Fullscreen Toggle */}
               <button
