@@ -320,3 +320,15 @@
 - [x] Mobile background playback & Picture-in-Picture: add `togglePictureInPicture` and `webkit-playsinline` in `UniversalPlayer.tsx` and `HTML5VideoAdapter.ts` for multitasking while room audio and calls continue in the background.
 - [x] YouTube error modal dismiss & cut: add top-right `X` close button, backdrop click-to-dismiss, Escape key handler, and `Dismiss` button in `UniversalPlayer.tsx` so users never need to refresh on playback errors.
 - [x] Verify `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors), `npm test` (96/96 passing).
+
+---
+
+## Phase 21 — Mobile Home Page Pixel-Perfect Redesign ✅
+- [x] Background & Lighting: add ambient emerald aurora glow curve at top right; style "NEW WATCH PARTY" in crisp purple mono tracking-widest.
+- [x] Hero Header: render "What are we watching?" with golden/amber radiant glow on "What" and creamy white on "are we watching?".
+- [x] YouTube Hero Card: inline red YouTube logo and serif typography on the same row, concise description, 3 purple feature badges ("Shared queue", "Up to 4 viewers", "Host sync"), dedicated purple "Watch on YouTube →" pill button, and authentic 3D red YouTube button graphic with neon ambient glow.
+- [x] Secondary Sources: 2-column mobile grid for "Direct URL" and "Local Upload", dark rounded icon boxes, clean subtitles including `(≤ 50MB)`, and circular right arrow action buttons.
+- [x] Coming Soon: authentic dark capsule pills for Netflix (red 'N' logo) and Prime Video (cyan prime script logo).
+- [x] Join a Room Card: warm cream/beige background `#EDE2CA`, misty pine forest silhouette illustration, dark green user icon, cream input with Link icon, and full-width purple "Join Room →" button with multi-stage loading feedback.
+- [x] Feature Pillars: 3-column mobile footer row with vertical dividers for "Real-time Sync" (Zap), "Watch Together" (Users2), and "Any Device" (Monitor).
+- [x] Non-breaking Architecture: ensure full backward compatibility on desktop (`lg:grid-cols-[minmax(0,1fr)_340px]`), preserve Recent Rooms, Favorites, URL/upload modals, room normalization, and 100% test coverage (96/96 passing, clean build).
