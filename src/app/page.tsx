@@ -46,17 +46,17 @@ function SecondarySource({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="group flex w-full items-center justify-between gap-2.5 rounded-xl sm:rounded-2xl border border-[#E8DDC5]/14 bg-[#102B23]/75 p-3 sm:p-3.5 text-left transition hover:border-[#9670FF]/45 hover:bg-[#173D30] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      className="group flex w-full items-center justify-between gap-2 sm:gap-2.5 rounded-xl sm:rounded-2xl border border-[#E8DDC5]/14 bg-[#102B23]/75 p-3 sm:p-3.5 text-left transition hover:border-[#9670FF]/45 hover:bg-[#173D30] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
         <span className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border border-[#E8DDC5]/15 bg-[#0B1E17] text-[#B397FF]">
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-xs sm:text-sm font-semibold text-[#F7F4EC] leading-tight">
+          <span className="block text-[13px] sm:text-sm font-semibold text-[#F7F4EC] leading-tight truncate">
             {title}
           </span>
-          <span className="mt-0.5 block text-[10px] sm:text-xs leading-snug text-[#CDBF9F]/85 line-clamp-2">
+          <span className="mt-0.5 block text-[11px] sm:text-xs leading-snug text-[#CDBF9F] line-clamp-2">
             {description}
           </span>
         </span>
@@ -94,6 +94,53 @@ function PrimeVideoPill() {
       </span>
       <span>Prime Video</span>
     </span>
+  );
+}
+
+function YouTubeWaveDecoration() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-y-0 right-0 w-3/4 sm:w-3/5 lg:w-1/2 overflow-hidden select-none [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_25%,black_100%)] [mask-image:linear-gradient(to_right,transparent_0%,black_25%,black_100%)]"
+    >
+      {/* Soft emerald/purple ambient glow */}
+      <div className="absolute -right-6 top-1/2 -translate-y-1/2 h-64 w-64 rounded-full bg-gradient-to-bl from-[#10B981]/15 via-[#9670FF]/10 to-transparent blur-3xl pointer-events-none" />
+      <svg
+        viewBox="0 0 380 230"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-full w-full object-cover opacity-60 sm:opacity-75"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <defs>
+          <linearGradient id="yt-wave" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#10B981" stopOpacity="0.08" />
+            <stop offset="30%" stopColor="#34D399" stopOpacity="0.65" />
+            <stop offset="70%" stopColor="#8B5CF6" stopOpacity="0.75" />
+            <stop offset="100%" stopColor="#B397FF" stopOpacity="0.25" />
+          </linearGradient>
+        </defs>
+        {/* Harmonically spaced fluid wave ribbon */}
+        <path d="M0.0 175.0C95.0 220.0 210.0 35.0 380.0 15.0" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.32" />
+        <path d="M2.4 177.1C96.8 215.3 208.4 39.5 381.1 21.1" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.36" />
+        <path d="M4.7 179.2C98.7 210.5 206.8 43.9 382.1 27.1" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.41" />
+        <path d="M7.1 181.3C100.5 205.8 205.3 48.4 383.2 33.2" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.46" />
+        <path d="M9.5 183.4C102.4 201.1 203.7 52.9 384.2 39.2" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.52" />
+        <path d="M11.8 185.5C104.2 196.3 202.1 57.4 385.3 45.3" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.58" />
+        <path d="M14.2 187.6C106.1 191.6 200.5 61.8 386.3 51.3" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.63" />
+        <path d="M16.6 189.7C107.9 186.8 198.9 66.3 387.4 57.4" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.67" />
+        <path d="M18.9 191.8C109.7 182.1 197.4 70.8 388.4 63.4" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.69" />
+        <path d="M21.3 193.9C111.6 177.4 195.8 75.3 389.5 69.5" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.68" />
+        <path d="M23.7 196.1C113.4 172.6 194.2 79.7 390.5 75.5" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.64" />
+        <path d="M26.1 198.2C115.3 167.9 192.6 84.2 391.6 81.6" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.59" />
+        <path d="M28.4 200.3C117.1 163.2 191.1 88.7 392.6 87.6" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.53" />
+        <path d="M30.8 202.4C118.9 158.4 189.5 93.2 393.7 93.7" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.47" />
+        <path d="M33.2 204.5C120.8 153.7 187.9 97.6 394.7 99.7" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.42" />
+        <path d="M35.5 206.6C122.6 148.9 186.3 102.1 395.8 105.8" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.37" />
+        <path d="M37.9 208.7C124.5 144.2 184.7 106.6 396.8 111.8" stroke="url(#yt-wave)" strokeWidth="1.2" strokeOpacity="0.33" />
+        <path d="M40.3 210.8C126.3 139.5 183.2 111.1 397.9 117.9" stroke="url(#yt-wave)" strokeWidth="1.0" strokeOpacity="0.29" />
+      </svg>
+    </div>
   );
 }
 
@@ -210,16 +257,16 @@ export default function HomePage() {
 
       {/* Header section */}
       <header className="relative z-10">
-        <p className="text-[10px] sm:text-[11px] font-mono uppercase tracking-[0.22em] text-[#8E6DF8]">
+        <p className="text-[11px] sm:text-xs font-mono uppercase tracking-[0.2em] text-[#9670FF]">
           New watch party
         </p>
-        <h1 className="mt-1.5 font-serif text-3xl font-semibold leading-[1.1] tracking-[-0.02em] text-[#F7F4EC] sm:text-4xl">
+        <h1 className="mt-1.5 font-serif text-[32px] sm:text-4xl font-semibold leading-[1.1] tracking-[-0.02em] text-[#F7F4EC]">
           <span className="relative inline-block text-[#F9E8C7] drop-shadow-[0_0_18px_rgba(249,232,199,0.45)]">
             What
           </span>{' '}
           are we watching?
         </h1>
-        <p className="mt-1.5 max-w-xl text-xs sm:text-sm leading-relaxed text-[#CDBF9F]/90">
+        <p className="mt-2 max-w-xl text-sm sm:text-base leading-relaxed text-[#CDBF9F]">
           Start with YouTube, or bring your own link or upload. We&apos;ll keep
           everyone in sync.
         </p>
@@ -230,60 +277,49 @@ export default function HomePage() {
         {/* Left Column (YouTube, Secondary Sources, Coming Soon) */}
         <div className="flex flex-col gap-3 sm:gap-3.5">
           {/* Main YouTube Hero Card */}
-          <section className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-gradient-to-br from-[#122A22]/95 via-[#0B1E17]/95 to-[#071510]/95 shadow-[0_16px_40px_rgba(0,0,0,0.35)] p-4 sm:p-6 text-left transition hover:border-white/15">
-            {/* Red ambient background glow */}
-            <div className="pointer-events-none absolute -right-6 -top-6 h-48 w-48 rounded-full bg-red-600/20 blur-3xl" />
-            <div className="pointer-events-none absolute right-2 bottom-0 h-36 w-36 rounded-full bg-red-600/15 blur-2xl" />
+          <section className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#9670FF]/35 bg-gradient-to-br from-[#122A22]/95 via-[#0B1E17]/95 to-[#071510]/95 shadow-[0_16px_40px_rgba(0,0,0,0.35)] p-4 sm:p-6 sm:py-7 text-left transition hover:border-[#9670FF]/55">
+            {/* Abstract flowing wave decoration on right */}
+            <YouTubeWaveDecoration />
 
-            {/* 3D YouTube Button Graphic on the right */}
-            <div className="pointer-events-none absolute right-2 top-2 sm:right-6 sm:top-6 h-28 w-28 sm:h-36 sm:w-36 flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/images/youtube-3d.png"
-                alt="YouTube 3D"
-                className="h-full w-full object-contain drop-shadow-[0_0_24px_rgba(255,0,0,0.45)] transform -rotate-3 hover:scale-105 transition-transform"
-              />
-            </div>
-
-            <div className="relative z-10 max-w-[230px] sm:max-w-md">
+            <div className="relative z-10 flex flex-col items-start max-w-none sm:max-w-md lg:max-w-lg">
               {/* Header: YouTube pill icon + YouTube text */}
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 sm:gap-3">
                 <div className="flex h-6 w-9 sm:h-7 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-[#FF0000] shadow-[0_4px_14px_rgba(255,0,0,0.35)]">
-                  <Play className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-white text-white ml-0.5" />
+                  <Play className="h-3.5 w-3.5 fill-white text-white ml-0.5" />
                 </div>
-                <h2 className="font-serif text-2xl sm:text-3xl font-semibold leading-none tracking-tight text-[#F7F4EC]">
+                <h2 className="font-serif text-[26px] sm:text-3xl font-semibold leading-none tracking-tight text-[#F7F4EC]">
                   YouTube
                 </h2>
               </div>
 
               {/* Description */}
-              <p className="mt-2 text-xs sm:text-sm leading-relaxed text-[#CDBF9F]/90">
+              <p className="mt-2.5 text-[13.5px] sm:text-sm leading-relaxed text-[#CDBF9F] max-w-md">
                 Search videos, build a shared line-up, and watch together with host-controlled playback.
               </p>
 
               {/* Feature badges */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] sm:text-xs text-[#CDBF9F]/85">
-                <span className="inline-flex items-center gap-1">
-                  <ListVideo className="h-3.5 w-3.5 text-[#B397FF]" />
+              <div className="mt-3.5 flex flex-wrap items-center gap-x-3.5 sm:gap-x-4 gap-y-1.5 text-xs text-[#CDBF9F] font-medium">
+                <span className="inline-flex items-center gap-1.5">
+                  <ListVideo className="h-3.5 w-3.5 text-[#B397FF] shrink-0" />
                   Shared queue
                 </span>
-                <span className="inline-flex items-center gap-1">
-                  <Users2 className="h-3.5 w-3.5 text-[#B397FF]" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Users2 className="h-3.5 w-3.5 text-[#B397FF] shrink-0" />
                   Up to 4 viewers
                 </span>
-                <span className="inline-flex items-center gap-1">
-                  <Play className="h-3.5 w-3.5 text-[#B397FF]" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Play className="h-3.5 w-3.5 text-[#B397FF] shrink-0" />
                   Host sync
                 </span>
               </div>
 
               {/* Purple Action Button */}
-              <div className="mt-4">
+              <div className="mt-4 sm:mt-5">
                 <button
                   type="button"
                   onClick={goToYouTube}
                   disabled={isLobbyBusy}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#7D34EB] to-[#9747FF] hover:from-[#8944F2] hover:to-[#A25BFF] px-5 py-2.5 text-xs sm:text-sm font-medium text-white shadow-[0_4px_18px_rgba(125,52,235,0.4)] transition cursor-pointer disabled:opacity-75 disabled:cursor-wait"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#7D34EB] to-[#9747FF] hover:from-[#8944F2] hover:to-[#A25BFF] px-5 sm:px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_18px_rgba(125,52,235,0.4)] transition cursor-pointer disabled:opacity-75 disabled:cursor-wait"
                 >
                   {isLobbyBusy && navigatingAction === 'create' ? (
                     <>
@@ -293,7 +329,7 @@ export default function HomePage() {
                   ) : (
                     <>
                       <span>Watch on YouTube</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <ArrowRight className="h-4 w-4" />
                     </>
                   )}
                 </button>
@@ -321,7 +357,7 @@ export default function HomePage() {
 
           {/* Coming Soon Pills */}
           <div className="flex items-center justify-center sm:justify-start gap-2.5 py-1">
-            <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-[0.2em] text-[#CDBF9F]/75 shrink-0">
+            <span className="text-[11px] font-mono uppercase tracking-[0.18em] text-[#CDBF9F]/85 shrink-0">
               Coming soon
             </span>
             <NetflixPill />
@@ -350,7 +386,7 @@ export default function HomePage() {
                   <h2 className="font-serif text-xl sm:text-2xl font-bold leading-none text-[#102B23]">
                     Join a room
                   </h2>
-                  <p className="mt-1 text-xs text-[#173D30]/85 font-normal">
+                  <p className="mt-1 text-xs sm:text-[13px] text-[#173D30]/85 font-normal">
                     Have an invite link or room code?
                   </p>
                 </div>
@@ -378,7 +414,7 @@ export default function HomePage() {
                 <button
                   type="submit"
                   disabled={isLobbyBusy}
-                  className="w-full rounded-full bg-gradient-to-r from-[#7D34EB] to-[#9747FF] hover:from-[#8944F2] hover:to-[#A25BFF] py-2.5 sm:py-3 text-sm font-medium text-white shadow-[0_4px_16px_rgba(125,52,235,0.35)] transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-75"
+                  className="w-full rounded-full bg-gradient-to-r from-[#7D34EB] to-[#9747FF] hover:from-[#8944F2] hover:to-[#A25BFF] py-2.5 sm:py-3 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(125,52,235,0.35)] transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-75"
                 >
                   {navigatingAction === 'join' ? (
                     <>
@@ -401,7 +437,7 @@ export default function HomePage() {
             <p className="text-[11px] font-mono uppercase tracking-[0.16em] text-[#CDBF9F]/75">
               Built for a shared screen
             </p>
-            <ul className="mt-3 space-y-2.5 text-xs leading-relaxed text-[#CDBF9F]/90">
+            <ul className="mt-3 space-y-2.5 text-xs sm:text-[13px] leading-relaxed text-[#CDBF9F]/90">
               <li className="flex items-start gap-2">
                 <Play className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B397FF]" />
                 The host controls play, pause, and seek for everyone.
@@ -424,30 +460,30 @@ export default function HomePage() {
         <div className="grid grid-cols-3 divide-x divide-[#E8DDC5]/10 text-center">
           <div className="flex flex-col items-center px-1 sm:px-2">
             <Zap className="h-4 w-4 text-[#B397FF]" />
-            <h3 className="mt-1.5 text-xs font-semibold text-[#F7F4EC] leading-tight">
+            <h3 className="mt-1.5 text-xs sm:text-[13px] font-semibold text-[#F7F4EC] leading-tight">
               Real-time Sync
             </h3>
-            <p className="mt-0.5 text-[10px] text-[#A6BAAE] leading-tight">
+            <p className="mt-0.5 text-[11px] sm:text-xs text-[#A6BAAE] leading-tight">
               Play, pause and seek together
             </p>
           </div>
 
           <div className="flex flex-col items-center px-1 sm:px-2">
             <Users2 className="h-4 w-4 text-[#B397FF]" />
-            <h3 className="mt-1.5 text-xs font-semibold text-[#F7F4EC] leading-tight">
+            <h3 className="mt-1.5 text-xs sm:text-[13px] font-semibold text-[#F7F4EC] leading-tight">
               Watch Together
             </h3>
-            <p className="mt-0.5 text-[10px] text-[#A6BAAE] leading-tight">
+            <p className="mt-0.5 text-[11px] sm:text-xs text-[#A6BAAE] leading-tight">
               Host control, shared queue
             </p>
           </div>
 
           <div className="flex flex-col items-center px-1 sm:px-2">
             <Monitor className="h-4 w-4 text-[#B397FF]" />
-            <h3 className="mt-1.5 text-xs font-semibold text-[#F7F4EC] leading-tight">
+            <h3 className="mt-1.5 text-xs sm:text-[13px] font-semibold text-[#F7F4EC] leading-tight">
               Any Device
             </h3>
-            <p className="mt-0.5 text-[10px] text-[#A6BAAE] leading-tight">
+            <p className="mt-0.5 text-[11px] sm:text-xs text-[#A6BAAE] leading-tight">
               Works on desktop and mobile
             </p>
           </div>

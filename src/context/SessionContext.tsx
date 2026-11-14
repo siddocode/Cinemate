@@ -422,7 +422,7 @@ export function SessionProvider({
     };
   }, [seedUser]);
 
-  const user = sessionStore.getIsInitialized() ? storeUser : seedUser;
+  const user = (isClientReady && sessionStore.getIsInitialized()) ? storeUser : seedUser;
   const isAuthenticated = Boolean(user.id && !user.isGuest);
   const isInitialized =
     isServerInitialized ||

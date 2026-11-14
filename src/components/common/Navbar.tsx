@@ -147,11 +147,15 @@ export const Navbar: React.FC = () => {
                 disabled={isSigningOut}
                 className="flex items-center gap-1.5 sm:gap-2.5 pl-1 pr-2 sm:pl-1.5 sm:pr-3 py-1 rounded-full bg-[#173D30]/80 border border-[#E8DDC5]/20 hover:border-[#E8DDC5]/40 transition-colors text-xs group cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
                 title="Click to edit display name"
+                suppressHydrationWarning
               >
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-xs uppercase shrink-0">
+                <div
+                  suppressHydrationWarning
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#0E281F] border border-[#E8DDC5]/25 flex items-center justify-center text-[#F7F4EC] font-medium text-xs uppercase shrink-0"
+                >
                   {(user.username || user.email || 'U').charAt(0)}
                 </div>
-                <div className="flex flex-col text-left min-w-0">
+                <div className="flex flex-col text-left min-w-0" suppressHydrationWarning>
                   <span
                     className="font-medium max-w-[76px] sm:max-w-[140px] truncate text-[#F7F4EC] leading-tight"
                     suppressHydrationWarning
@@ -159,7 +163,10 @@ export const Navbar: React.FC = () => {
                     {user.username || 'User'}
                   </span>
                   {user.email && (
-                    <span className="text-xs text-[#CDBF9F]/90 max-w-[110px] sm:max-w-[150px] truncate hidden sm:block leading-tight">
+                    <span
+                      suppressHydrationWarning
+                      className="text-xs text-[#CDBF9F]/90 max-w-[110px] sm:max-w-[150px] truncate hidden sm:block leading-tight"
+                    >
                       {user.email}
                     </span>
                   )}

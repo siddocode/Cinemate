@@ -326,7 +326,8 @@
 ## Phase 21 — Mobile Home Page Pixel-Perfect Redesign ✅
 - [x] Background & Lighting: add ambient emerald aurora glow curve at top right; style "NEW WATCH PARTY" in crisp purple mono tracking-widest.
 - [x] Hero Header: render "What are we watching?" with golden/amber radiant glow on "What" and creamy white on "are we watching?".
-- [x] YouTube Hero Card: inline red YouTube logo and serif typography on the same row, concise description, 3 purple feature badges ("Shared queue", "Up to 4 viewers", "Host sync"), dedicated purple "Watch on YouTube →" pill button, and authentic 3D red YouTube button graphic with neon ambient glow.
+- [x] YouTube Hero Card: clean typography-first layout with official YouTube red play icon, serif "YouTube" heading (`text-[26px] sm:text-3xl`), readable 13.5px description, 12px feature badges, decisive 14px semi-bold purple "Watch on YouTube →" pill button, and abstract harmonic emerald-to-purple flowing wave vector SVG decoration; 3D red button image completely removed.
+- [x] Mobile Typographic Scale Polish: raised micro-type across the page (eyebrows to 11px, hero subhead to 14px, secondary source titles to 13px, descriptions to 11px, pillar subtext to 11px) ensuring effortless hand-held readability without eye strain.
 - [x] Secondary Sources: 2-column mobile grid for "Direct URL" and "Local Upload", dark rounded icon boxes, clean subtitles including `(≤ 50MB)`, and circular right arrow action buttons.
 - [x] Coming Soon: authentic dark capsule pills for Netflix (red 'N' logo) and Prime Video (cyan prime script logo).
 - [x] Join a Room Card: warm cream/beige background `#EDE2CA`, misty pine forest silhouette illustration, dark green user icon, cream input with Link icon, and full-width purple "Join Room →" button with multi-stage loading feedback.
