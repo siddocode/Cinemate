@@ -141,7 +141,7 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
     <div
       className={cn(
         'shrink-0 border-b border-[#E8DDC5]/12 bg-[#0E281F]/95 text-[#F7F4EC]',
-        variant === 'sidebar' ? 'px-3.5 py-2.5 space-y-2' : 'px-3 sm:px-6 py-2 space-y-2',
+        variant === 'sidebar' ? 'px-3 py-1.5 space-y-1.5' : 'px-3 sm:px-6 py-2 space-y-2',
         className
       )}
     >
@@ -260,27 +260,32 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
 
       {/* Active / Joining Voice Call Strip */}
       {(isInCall || status === 'joining') && (
-        <div className="rounded-xl bg-[#133227] border border-[#E8DDC5]/16 p-2.5 space-y-2">
+        <div
+          className={cn(
+            'rounded-xl bg-[#133227] border border-[#E8DDC5]/16',
+            variant === 'sidebar' ? 'p-2 space-y-1.5' : 'p-2.5 space-y-2'
+          )}
+        >
           {/* Status + Primary Call Controls */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               <Badge
                 variant={statusMeta.variant}
                 dot={status !== 'joining'}
-                className="text-xs py-0.5 px-2.5 whitespace-nowrap"
+                className="text-[11px] py-0.5 px-2 whitespace-nowrap"
               >
                 {status === 'joining' && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <Loader2 className="w-3 h-3 animate-spin shrink-0" />
                 )}
                 {statusMeta.label}
               </Badge>
 
               {process.env.NODE_ENV === 'development' && iceMode === 'stun-only' && (
                 <span
-                  className="text-xs font-mono px-2 py-0.5 rounded-md bg-[#292214] border border-[#E9B872]/30 text-[#F0C987]"
+                  className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-[#292214] border border-[#E9B872]/30 text-[#F0C987]"
                   title="STUN-only Dev"
                 >
-                  STUN-only Dev
+                  STUN-only
                 </span>
               )}
             </div>
@@ -292,12 +297,15 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   size="sm"
                   onClick={onToggleMute}
                   disabled={isBusy}
-                  className="h-8 sm:h-7 px-3 rounded-full"
+                  className={cn(
+                    variant === 'sidebar' ? 'h-6.5 px-2.5 text-[11px]' : 'h-8 sm:h-7 px-3 text-xs',
+                    'rounded-full'
+                  )}
                   leftIcon={
                     isMuted ? (
-                      <MicOff className="w-3.5 h-3.5" />
+                      <MicOff className="w-3 h-3" />
                     ) : (
-                      <Mic className="w-3.5 h-3.5 text-[#7AD3A8]" />
+                      <Mic className="w-3 h-3 text-[#7AD3A8]" />
                     )
                   }
                   aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
@@ -312,8 +320,11 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                 onClick={onLeave}
                 isLoading={isLeaving}
                 disabled={isJoining || isLeaving}
-                className="h-8 sm:h-7 px-3 rounded-full"
-                leftIcon={<PhoneOff className="w-3.5 h-3.5" />}
+                className={cn(
+                  variant === 'sidebar' ? 'h-6.5 px-2.5 text-[11px]' : 'h-8 sm:h-7 px-3 text-xs',
+                  'rounded-full'
+                )}
+                leftIcon={<PhoneOff className="w-3 h-3" />}
                 title={isHost ? 'End voice call for everyone' : 'Leave voice call'}
                 aria-label={isHost ? 'End voice call for everyone' : 'Leave voice call'}
               >
@@ -335,7 +346,8 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   <div
                     key={participant.userId}
                     className={cn(
-                      'flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs transition-all duration-150 min-w-0 max-w-full',
+                      'flex items-center gap-1.5 rounded-full border transition-all duration-150 min-w-0 max-w-full',
+                      variant === 'sidebar' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs',
                       isSpeaking
                         ? 'bg-[#173D30] border-[#7AD3A8]/70 shadow-[0_0_12px_rgba(122,211,168,0.25)] ring-1 ring-[#7AD3A8]/40'
                         : isMuted
@@ -345,7 +357,8 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
                   >
                     <span
                       className={cn(
-                        'w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-all',
+                        'rounded-full flex items-center justify-center font-semibold shrink-0 transition-all',
+                        variant === 'sidebar' ? 'w-4 h-4 text-[10px]' : 'w-5 h-5 text-xs',
                         isSpeaking
                           ? 'bg-[#7AD3A8] text-[#091B15] ring-2 ring-[#7AD3A8]/50 animate-pulse'
                           : isMuted
@@ -405,10 +418,10 @@ export const VoiceCallBar: React.FC<VoiceCallBarProps> = ({
             </Button>
           )}
 
-          {/* Subtle Headphones Echo Tip & Auto-Duck Toggle */}
-          {isInCall && (variant === 'sidebar' || onToggleAutoDuck) && (
+          {/* Subtle Auto-Duck Toggle & Headphones Tip (Compact in Sidebar) */}
+          {isInCall && (onToggleAutoDuck || (!hideHeadphoneTip && variant !== 'sidebar')) && (
             <div className="flex items-center justify-between gap-2 text-xs text-[#CDBF9F]/80 pt-0.5 flex-wrap">
-              {variant === 'sidebar' && status === 'connected' && !hideHeadphoneTip ? (
+              {variant !== 'sidebar' && status === 'connected' && !hideHeadphoneTip ? (
                 <span className="flex items-center gap-1.5 truncate min-w-0">
                   <Headphones className="w-3.5 h-3.5 text-[#9670FF] shrink-0" />
                   <span className="truncate">Use headphones to prevent movie echo</span>

@@ -343,3 +343,88 @@
 - [x] Redesign deletion animation: replaced the unstyled 14px monochrome `<Loader2>` spinner in the 30px trash button with an architectural dual-ring cinema loader matching Cinemate's signature loading motif (`border-t-[#F2B8B2] border-r-[#F2B8B2]/60 animate-spin` with glowing pulsing core pip and uppercase tracking-widest status text).
 - [x] Fluid layout exit transition: implemented smooth 200ms scale-down, fade, and blur dissolution (`opacity-0 scale-95 -translate-y-1.5 blur-[1px]`) before state unmount, eliminating harsh layout snaps and allowing remaining cards to glide gracefully into place.
 - [x] Maintain test coverage and strict type safety: verified with `npx tsc --noEmit` (0 errors), `npm test` (96/96 passing), and Next.js production build (`next build`).
+
+---
+
+## Phase 23 — Universal Video Link Resolution ✅
+- [x] Add `src/lib/utils/socialVideo.ts`: `parseHttpUrl`, `extractTweetId` (twitter.com / x.com / mobile / scheme-less), `isTweetLink`, `isTcoLink`, `looksLikeDirectMediaUrl`, `isPrivateHostname` (loopback/RFC1918/link-local/CGNAT/IPv6 guard).
+- [x] Add `src/lib/services/twitterVideoService.ts`: syndication token generation, `pickBestMp4Variant` (highest bitrate, MP4-only), public-page HTML variant scraping with thumbnail extraction, syndication JSON parsing, and t.co redirect following (3 hops, host-validated).
+- [x] Add authenticated-context-safe `/api/video/resolve` route: rate limiting, SSRF guard, tweet resolution, YouTube-tab hint, direct-media fast path, page-only platform rejection (`UNSUPPORTED_PLATFORM`: Instagram, TikTok, Facebook, Vimeo, Twitch, Reddit, streaming services), safe redirect-aware content-type probe, and machine-readable error codes plus friendly messages.
+- [x] Add `src/lib/services/videoLinkService.ts` client wrapper with typed `VideoLinkError` and typed results (`direct` / `tweet` / `unverified`).
+- [x] Wire resolution into `ChangeVideoModal.tsx` (direct-URL tab resolves before `onSelectVideo`, updated label/helper/loading copy) and `SourceSetupModal.tsx` (async submit with `isResolving`, inline errors, disabled fields).
+- [x] `HTML5VideoAdapter.ts`: retry once without `crossOrigin` on media error (preserve `currentTime`; reset per load/destroy; emit `ERROR` only if the retry fails).
+- [x] Update `youtubeErrors.ts` non-YouTube playback message to explain web-page links vs. video files and the supported sources.
+- [x] Add cross-browser HLS: install `hls.js`, lazy-import it in `HTML5VideoAdapter.ts` only for `.m3u8` sources, attach via `MEDIA_ATTACHED` → `loadSource`, emit `ERROR` on fatal failures, tear down on source change/destroy, and keep Safari/iOS native HLS fallback.
+- [x] Add `.m3u8` to the direct-media fast path so HLS links skip the content-type probe; verified live HLS playback in headless Chrome (manifest parsed, 5 levels).
+- [x] Add `tests/video-link-resolution.test.mjs` (10 tests) covering tweet/media URL detection, SSRF guards, token/bitrate selection, HTML + syndication parsing, and wiring.
+- [x] Verify `npx tsc --noEmit` (0 errors), `npm run lint` (clean), and `npm test` (108/108 passing).
+- [x] Live link matrix (18 links): direct MP4/WebM/HLS pass, YouTube/Instagram/TikTok/Vimeo are rejected with specific messages, X/Twitter video posts resolve to direct MP4s, text-only tweets and private hosts are rejected, malformed input returns 400.
+
+---
+
+## Phase 24 — Mobile Watch-Party Room UI Redesign ✅
+- [x] Redesign Room Header (`RoomHeader.tsx`):
+  - Removed Chat toggle button from the top toolbar.
+  - Eliminated overlapping media, call, mic, and chat controls.
+  - Eliminated duplicate Syncora branding below the Navbar: Left displays `<` Back arrow + Room Title + tap-to-copy Room Code pill; Right displays Share/Copy invite link pill (`Link2`), Participants count pill (`Users` + count), and More options menu (`MoreVertical`).
+  - Preserved room information, room code copy, and participants accessibility on all screen sizes down to 320px.
+- [x] Desktop Layout & Chat Clamping (`RoomView.tsx` & `ChatContainer.tsx`):
+  - Fixed chat expansion bug: clamped `ChatContainer` to `w-full h-full min-h-0 flex-1 flex flex-col overflow-hidden` inside a fixed desktop container (`lg:w-[350px] xl:w-[380px] lg:flex-none lg:h-full`). The chat box never expands with message count, the header is pinned at the top, and the input composer is permanently pinned at the bottom.
+  - Set desktop lounge wrapper to `lg:flex-none lg:w-[350px] xl:w-[380px] lg:h-full` so video player expands to fill all available horizontal theater space (`lg:flex-1 lg:min-w-0`), removing the blank right void.
+  - Restored original desktop chat interface (`hidden lg:flex`): right-aligned self bubbles (`bg-[#194234]`), left-aligned partner bubbles (`bg-[#122A21]`), permanent quick emoji reaction bar, and standard `rounded-xl` input with primary send button matching the original design.
+  - Preserved the new mobile experience (`lg:hidden`): avatar initials, pill input with smiley button, and pinned composer above keyboard.
+- [x] Smooth Slide-Over Drawer Transitions & Flash Elimination:
+  - Authored `useDrawerTransition.ts` to manage smooth 280ms enter and 240ms exit transitions (`.drawer-enter` / `.drawer-exit` and `.drawer-backdrop` / `.drawer-backdrop-exit`).
+  - Integrated into `RoomQueuePanel.tsx`, `RoomParticipantsModal.tsx`, `ChangeVideoModal.tsx`, and `YouTubeQueueModal.tsx`.
+  - Removed `isAnyDrawerOpen && 'lg:hidden'` so chat stays mounted beneath drawers, eliminating the jarring flash and blank void when clicking Invite Friends, Queue, or Media buttons.
+- [x] Compact Mobile Call Actions Toolbar (`CallActionsToolbar.tsx`):
+  - Scaled buttons down from 48px to sleek 36px–38px (`w-9 h-9 sm:w-9.5 sm:h-9.5`, `w-4 h-4` icons) with tight padding (`py-1 px-2`), freeing up ~20px of vertical height for chat.
+  - Scaled mobile player to `max-w-[calc(26dvh*16/9)]` and tabs to `py-1.5`, delivering over 60px of extra vertical space for chat messages.
+- [x] Streamlined Voice Call Lounge in Sidebar (`VoiceCallBar.tsx`):
+  - Made `variant="sidebar"` compact (`p-2 space-y-1.5`, buttons `h-6.5 px-2.5`, compact participant pills). When voice call begins, it docks neatly under the chat header without pushing or breaking the chat composer.
+- [x] Notifications Architecture (`RoomView.tsx` & `CallActionsToolbar.tsx`):
+  - Display prominent temporary notification banner below header when someone joins the room, with "Join Call" pill button if a voice call is active/joinable.
+  - Display call join notification directly inside the call toolbar when someone joins voice call.
+  - Clearly distinguish room participants from call participants.
+  - Deduplicated notifications using timestamped sets to eliminate repeat flashes.
+- [x] Media and Call Controls Toolbar (`CallActionsToolbar.tsx`):
+  - Video player remains visually prominent with standard 16:9 ratio and auto-scaling when virtual keyboard opens.
+  - Grouped microphone, camera, screen share, participants, and call action into dedicated responsive toolbar with 44px+ touch targets and generous spacing.
+  - Speaking animation pulse ring, muted red indicators, and cinema bandwidth guidelines.
+- [x] Chat Prioritization (`ChatContainer.tsx` & `useVisualViewport.ts`):
+  - Gave chat all available remaining vertical space on mobile.
+  - Pinned message composer above virtual keyboard with `env(safe-area-inset-bottom)` safe-area insets.
+  - Handled Android Chrome & iOS Safari virtual keyboard resizing via `useVisualViewport` hook.
+  - Independent message list scroll with `overscroll-contain touch-pan-y`.
+  - Intelligent auto-scroll: reading older messages is preserved; floating `New messages ↓` pill button appears when unread messages arrive, scrolling to bottom on tap.
+  - WhatsApp-style chat bubbles, avatars, timestamps, and delivery/read ticks.
+- [x] Segmented Navigation Tabs on Mobile (`RoomView.tsx`):
+  - 1-tap switching between `▷ YouTube` (Chat view), `☰ Queue · {count}` (inline watch queue), and `👥 Participants · {count}` (inline members list) directly below player, keeping active playback 100% visible.
+- [x] Responsive Design & Desktop Preservation:
+  - Supported narrow screens (320px–430px) with zero horizontal overflow.
+  - Maintained desktop theater mode (split video + chat lounge, slide-over right drawers).
+- [x] Verification & Automated Tests:
+  - Authored `tests/mobile-room-redesign.test.mjs` verifying header decluttering, notification separation, call toolbar targets, visual viewport, and chat prioritization.
+  - Confirmed `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors, 0 warnings), `npm test` (113/113 passing across 19 suites), and Next.js production build (`next build`).
+
+---
+
+## Phase 25 — Watch Queue Close Button, Chat Scroll Stability, & Mobile Permissions Toggles
+- [x] Watch Queue Drawer Close Button (`RoomQueuePanel.tsx`):
+  - Upgraded close button hit target to a prominent 36px action (`h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#E8DDC5]/20 bg-[#173D30] text-[#E8DDC5] hover:border-[#9670FF]/50 hover:bg-[#1E4B3C] active:scale-95 shadow-sm`) with `<X className="w-5 h-5" />`, `e.preventDefault()`, and `e.stopPropagation()`.
+  - Added global keyboard `Escape` key listener (`handleKeyDown`) to close the drawer instantly.
+  - Enabled backdrop click-to-close on both desktop and mobile with `pointer-events-auto cursor-pointer`.
+  - Fixed Hook call order by ensuring all `useCallback` and `useEffect` hooks run before `if (!isRendered) return null;`.
+- [x] Chat Scroll-to-Top Stability (`ChatContainer.tsx`):
+  - Added `isScrolledUpRef` and `hasInitializedScrollRef` to prevent typing indicators and seen receipts (`CHAT_SEEN`) from triggering false scroll resets.
+  - Removed `partnerTyping` and `isScrolledUp` from auto-scroll dependency array.
+  - Users can smoothly scroll all the way to the top of chat to read older messages without any snapping, jumping, or broken layout.
+- [x] Mobile Members & Permissions Host Toggles (`RoomView.tsx`):
+  - Added "Room Permissions" section under `mobileTab === 'participants'` on mobile.
+  - Added Shared Playback Controls switch (`room.allowGuestControl` calling `toggleGuestControl`) allowing host to enable everyone to control playback (or badge for viewers).
+  - Added Voice Call Initiation switch (`room.allowGuestCall` calling `toggleGuestCall`) allowing host to enable everyone to start voice calls (or badge for viewers).
+  - Added Room Code & Invite Link card with one-tap link copy and copied state badge.
+  - Preserved participant list with role badges (Host/Co-Host/Viewer), on-call indicators, and host actions (Demote, Make Co-Host, Kick).
+- [x] Verification & Automated Tests:
+  - Added automated test suite 7 in `tests/mobile-room-redesign.test.mjs` verifying queue close button, chat scroll stability, and mobile permissions toggles.
+  - Confirmed `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors, 0 warnings), `npm test` (115/115 passing across 19 suites), and Next.js production build (`next build` across all 13 routes).

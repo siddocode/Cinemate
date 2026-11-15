@@ -5,6 +5,7 @@ import { Link2, Upload, ArrowRight, Film } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { resolvePlayableVideoUrl } from '@/lib/services/videoLinkService';
 
 export type SourceSetupMode = 'url' | 'upload';
 
@@ -26,12 +27,14 @@ export const SourceSetupModal: React.FC<SourceSetupModalProps> = ({
   const [roomTitle, setRoomTitle] = useState('');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
+  const [isResolving, setIsResolving] = useState(false);
 
   const isUrlMode = mode === 'url';
+  const isBusyNow = isBusy || isResolving;
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (isBusy) return;
+    if (isBusyNow) return;
     setError('');
 
     if (isUrlMode) {
@@ -44,7 +47,16 @@ export const SourceSetupModal: React.FC<SourceSetupModalProps> = ({
         setError('Enter a valid URL beginning with https://');
         return;
       }
-      onConfirm({ title: roomTitle.trim(), url: trimmed });
+
+      setIsResolving(true);
+      try {
+        const resolved = await resolvePlayableVideoUrl(trimmed);
+        onConfirm({ title: roomTitle.trim(), url: resolved.url });
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'That link could not be loaded.');
+      } finally {
+        setIsResolving(false);
+      }
       return;
     }
 
@@ -55,7 +67,7 @@ export const SourceSetupModal: React.FC<SourceSetupModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      preventClose={isBusy}
+      preventClose={isBusyNow}
       title={isUrlMode ? 'Watch a direct video link' : 'Upload a personal clip'}
       description={
         isUrlMode
@@ -70,7 +82,7 @@ export const SourceSetupModal: React.FC<SourceSetupModalProps> = ({
           value={roomTitle}
           onChange={(event) => setRoomTitle(event.target.value)}
           maxLength={50}
-          disabled={isBusy}
+          disabled={isBusyNow}
           tone="dark"
           autoFocus
         />
@@ -83,8 +95,8 @@ export const SourceSetupModal: React.FC<SourceSetupModalProps> = ({
             onChange={(event) => setUrl(event.target.value)}
             error={error}
             leftIcon={<Link2 className="w-4 h-4" />}
-            disabled={isBusy}
-            helperText="The link should point directly to a video file or supported stream."
+            disabled={isBusyNow}
+            helperText="Direct video file link or a Twitter/X post link. We'll resolve it automatically."
             tone="dark"
           />
         ) : (
@@ -112,7 +124,7 @@ export const SourceSetupModal: React.FC<SourceSetupModalProps> = ({
           size="lg"
           variant="primary"
           className="w-full"
-          isLoading={isBusy}
+          isLoading={isBusyNow}
           leftIcon={isUrlMode ? <Film className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
           rightIcon={<ArrowRight className="w-4 h-4" />}
         >

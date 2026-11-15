@@ -1,3 +1,4 @@
+import type HlsType from 'hls.js';
 import {
   IVideoPlayerAdapter,
   PlaybackState,
@@ -5,15 +6,20 @@ import {
   PlayerEventHandler,
 } from '../types/player.types';
 
+const HLS_SOURCE_PATTERN = /\.m3u8(?:[?#]|$)/i;
+
 export class HTML5VideoAdapter implements IVideoPlayerAdapter {
   private videoElement: HTMLVideoElement | null = null;
   private containerElement: HTMLElement | null = null;
   private eventHandlers: Map<PlayerEventType, Set<PlayerEventHandler>> = new Map();
   private boundListeners: Map<string, EventListener> = new Map();
   private isReady: boolean = false;
+  private corsFallbackApplied: boolean = false;
+  private hlsInstance: HlsType | null = null;
 
   async initialize(container: HTMLElement, initialUrl: string): Promise<void> {
     this.containerElement = container;
+    this.corsFallbackApplied = false;
     container.innerHTML = '';
 
     const video = document.createElement('video');
@@ -26,14 +32,10 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
     // before playback begins. Range requests fetch only chunks as needed during active playback.
     video.preload = 'metadata';
 
-    if (initialUrl) {
-      video.src = initialUrl;
-    }
-
     this.videoElement = video;
     container.appendChild(video);
 
-    return new Promise((resolve) => {
+    const ready = new Promise<void>((resolve) => {
       const handleCanPlay = () => {
         this.isReady = true;
         this.emit('READY', this.getPlaybackState());
@@ -50,6 +52,70 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
         handleCanPlay();
       }
     });
+
+    if (initialUrl) {
+      void this.loadSource(initialUrl);
+    }
+
+    return ready;
+  }
+
+  private detachHls() {
+    if (this.hlsInstance) {
+      try {
+        this.hlsInstance.destroy();
+      } catch {
+        // Ignore teardown races when the player is already gone.
+      }
+      this.hlsInstance = null;
+    }
+  }
+
+  private async attachHls(url: string): Promise<boolean> {
+    const video = this.videoElement;
+    if (!video) return false;
+
+    try {
+      const { default: Hls } = await import('hls.js');
+
+      // Safari/iOS can play HLS natively; skip the extra library there.
+      if (!Hls.isSupported()) return false;
+
+      const hls = new Hls({ enableWorker: true });
+      this.hlsInstance = hls;
+
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return;
+        console.warn('[Syncora] HLS fatal error:', data.type, data.details);
+        this.emit('ERROR', this.getPlaybackState());
+      });
+
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        hls.loadSource(url);
+      });
+      hls.attachMedia(video);
+      return true;
+    } catch (err) {
+      console.warn('[Syncora] hls.js unavailable, trying native HLS:', err);
+      this.detachHls();
+      return false;
+    }
+  }
+
+  private async loadSource(url: string) {
+    const video = this.videoElement;
+    if (!video) return;
+
+    this.detachHls();
+    this.corsFallbackApplied = false;
+
+    if (HLS_SOURCE_PATTERN.test(url)) {
+      const attached = await this.attachHls(url);
+      if (attached) return;
+    }
+
+    video.src = url;
+    video.load();
   }
 
   private bindEvents(video: HTMLVideoElement) {
@@ -60,7 +126,35 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
     const onPlaying = () => this.emit('PLAY', this.getPlaybackState());
     const onEnded = () => this.emit('ENDED', this.getPlaybackState());
     const onRateChange = () => this.emit('RATE_CHANGE', this.getPlaybackState());
-    const onError = () => this.emit('ERROR', this.getPlaybackState());
+    const onError = () => {
+      const video = this.videoElement;
+      if (!video) return;
+
+      // Some CDNs (Twitter/X, certain object stores) serve media without CORS
+      // headers. crossOrigin='anonymous' then blocks playback even though the
+      // file itself is fine, so retry once without the CORS requirement.
+      if (!this.hlsInstance && !this.corsFallbackApplied && video.crossOrigin) {
+        this.corsFallbackApplied = true;
+        const src = video.currentSrc || video.src;
+        if (src) {
+          const resumeAt = video.currentTime;
+          video.removeAttribute('crossorigin');
+          video.crossOrigin = null;
+          video.src = src;
+          video.load();
+          if (resumeAt > 0) {
+            try {
+              video.currentTime = resumeAt;
+            } catch {
+              // Ignore; playback resumes from the start.
+            }
+          }
+          return;
+        }
+      }
+
+      this.emit('ERROR', this.getPlaybackState());
+    };
 
     this.addListener(video, 'play', onPlay);
     this.addListener(video, 'pause', onPause);
@@ -169,11 +263,9 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
 
   async loadVideo(videoUrl: string): Promise<void> {
     if (!this.videoElement) return;
-    this.videoElement.src = videoUrl;
-    this.videoElement.load();
     this.isReady = false;
 
-    return new Promise((resolve) => {
+    const ready = new Promise<void>((resolve) => {
       const onLoaded = () => {
         this.isReady = true;
         this.emit('READY', this.getPlaybackState());
@@ -181,9 +273,14 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
       };
       this.videoElement?.addEventListener('canplay', onLoaded, { once: true });
     });
+
+    await this.loadSource(videoUrl);
+    return ready;
   }
 
   destroy(): void {
+    this.detachHls();
+
     if (this.videoElement) {
       this.boundListeners.forEach((listener, event) => {
         this.videoElement?.removeEventListener(event, listener);
@@ -202,6 +299,7 @@ export class HTML5VideoAdapter implements IVideoPlayerAdapter {
 
     this.eventHandlers.clear();
     this.isReady = false;
+    this.corsFallbackApplied = false;
   }
 
   on(event: PlayerEventType, handler: PlayerEventHandler): void {

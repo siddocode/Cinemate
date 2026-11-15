@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   ListVideo,
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils/cn';
 import { YouTubeIcon } from '@/components/common/YouTubeIcon';
 import { YouTubeBrowser } from '@/components/youtube/YouTubeBrowser';
 import { Button } from '@/components/ui/Button';
+import { useDrawerTransition } from '@/hooks/useDrawerTransition';
 
 interface RoomQueuePanelProps {
   isOpen: boolean;
@@ -101,7 +102,27 @@ export const RoomQueuePanel: React.FC<RoomQueuePanelProps> = ({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  if (!isOpen) return null;
+  const { isRendered, isAnimatingOut } = useDrawerTransition(isOpen);
+
+  const handleClose = useCallback(() => {
+    setView('queue');
+    setSelectedVideos([]);
+    setAddVideosError(null);
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isAddingVideos) {
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isAddingVideos, handleClose]);
+
+  if (!isRendered) return null;
 
   const currentYouTubeId =
     currentVideoType === 'youtube' ? extractYouTubeId(currentVideoUrl) : null;
@@ -111,13 +132,6 @@ export const RoomQueuePanel: React.FC<RoomQueuePanelProps> = ({
 
   const resolveAddedBy = (userId: string) =>
     members.find((member) => member.userId === userId)?.username || 'A viewer';
-
-  const handleClose = () => {
-    setView('queue');
-    setSelectedVideos([]);
-    setAddVideosError(null);
-    onClose();
-  };
 
   const handleSelectVideo = (video: YouTubeVideoSummary) => {
     setAddVideosError(null);
@@ -246,13 +260,25 @@ export const RoomQueuePanel: React.FC<RoomQueuePanelProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end pointer-events-none" role="dialog" aria-modal="true">
-      {/* Soft non-intrusive backdrop on mobile (tap to close); hidden on desktop so video remains clickable */}
+      {/* Soft non-intrusive backdrop (tap or click outside to close) */}
       <div
-        className="absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] transition-opacity drawer-backdrop pointer-events-auto lg:hidden"
-        onClick={handleClose}
+        className={cn(
+          'absolute inset-0 bg-[#071611]/50 backdrop-blur-[1px] pointer-events-auto cursor-pointer',
+          isAnimatingOut ? 'drawer-backdrop-exit' : 'drawer-backdrop'
+        )}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleClose();
+        }}
         aria-hidden="true"
       />
-      <aside className="relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] drawer-enter pointer-events-auto">
+      <aside
+        className={cn(
+          'relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] pointer-events-auto',
+          isAnimatingOut ? 'drawer-exit' : 'drawer-enter'
+        )}
+      >
         {view === 'add' ? (
           <div className="flex items-center justify-between gap-3 border-b border-[#E8DDC5]/12 px-4 py-3.5 shrink-0 bg-[#0E281F]">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -281,10 +307,15 @@ export const RoomQueuePanel: React.FC<RoomQueuePanelProps> = ({
 
             <button
               type="button"
-              onClick={handleClose}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleClose();
+              }}
               disabled={isAddingVideos}
-              className="rounded-full p-1.5 text-[#CDBF9F] hover:bg-[#173D30] hover:text-[#F7F4EC] transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#E8DDC5]/20 bg-[#173D30] text-[#E8DDC5] hover:border-[#9670FF]/50 hover:bg-[#1E4B3C] hover:text-[#F7F4EC] transition-all cursor-pointer pointer-events-auto shrink-0 disabled:opacity-40 active:scale-95 shadow-sm"
               aria-label="Close add to queue"
+              title="Close add to queue (Esc)"
             >
               <X className="w-5 h-5" />
             </button>
@@ -308,11 +339,16 @@ export const RoomQueuePanel: React.FC<RoomQueuePanelProps> = ({
             </div>
             <button
               type="button"
-              onClick={handleClose}
-              className="rounded-full p-1.5 text-[#CDBF9F] hover:bg-[#173D30] hover:text-[#F7F4EC] transition-colors cursor-pointer"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleClose();
+              }}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#E8DDC5]/20 bg-[#173D30] text-[#E8DDC5] hover:border-[#9670FF]/50 hover:bg-[#1E4B3C] hover:text-[#F7F4EC] transition-all cursor-pointer pointer-events-auto active:scale-95 shadow-sm"
               aria-label="Close watch queue"
+              title="Close watch queue (Esc)"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         )}

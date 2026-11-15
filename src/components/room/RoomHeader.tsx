@@ -18,8 +18,10 @@ import {
   Loader2,
   Users,
   Share2,
-  MoreHorizontal,
   ListVideo,
+  ArrowLeft,
+  Link2,
+  MoreVertical,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -370,99 +372,71 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
         </div>
       )}
 
-      {/* Sleek Mobile Room Bar (single uncluttered luxury row) */}
-      <div className="flex md:hidden items-center justify-between gap-2 px-3 py-2 min-h-[54px]">
-        {/* Editorial Room Title & Clear Room Code Copy */}
-        <div className="min-w-0 flex-1">
-          <h1 className="font-serif text-base sm:text-lg font-semibold tracking-tight text-[#F7F4EC] leading-tight truncate">
-            {room.title}
-          </h1>
-          <div className="flex items-center gap-2 mt-0.5 text-xs font-mono text-[#CDBF9F] min-w-0">
+      {/* Redesigned Mobile Room Header Bar (Zero overlapping controls, clean responsive groups, no repeating Syncora branding) */}
+      <div className="flex md:hidden items-center justify-between gap-2 px-3 py-2 min-h-[52px]">
+        {/* Left: Leave Room arrow + Room Title + Room Code */}
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => void handleLeaveRoom()}
+            disabled={isLeavingRoom}
+            className="p-1.5 -ml-1 text-[#E8DDC5] hover:text-[#F7F4EC] rounded-full hover:bg-[#173D30] transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+            title={isHost ? 'Close & Leave Room' : 'Leave Room'}
+            aria-label="Leave room"
+          >
+            <ArrowLeft className="w-5 h-5 text-[#E8DDC5]" />
+          </button>
+          <div className="min-w-0 flex items-center gap-2">
+            <h1 className="font-serif text-base font-semibold tracking-tight text-[#F7F4EC] truncate max-w-[130px] xs:max-w-[170px] sm:max-w-[220px]">
+              {room.title}
+            </h1>
             <button
               type="button"
               onClick={() => void handleCopyLink()}
-              className="inline-flex items-center gap-1 text-[#E8DDC5] hover:text-[#F7F4EC] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold bg-[#E8DDC5] hover:bg-[#F7F4EC] px-2 py-0.5 rounded-full text-[#102B23] transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               title="Copy room invitation link"
               aria-label="Copy room code and invitation link"
             >
-              <span className={copied ? 'text-[#7AD3A8]' : ''}>
-                {copied ? 'Copied' : room.code}
-              </span>
+              <span>{room.code}</span>
               {copied ? (
-                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
+                <Check className="w-2.5 h-2.5 text-[#15803D]" />
               ) : (
-                <Copy className="w-3 h-3 text-[#CDBF9F]/70" />
+                <Copy className="w-2.5 h-2.5 text-[#173D30]/75" />
               )}
             </button>
           </div>
         </div>
 
-        {/* Essential Mobile Actions + Refined Overflow Menu */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Members & Co-Host Trigger */}
+        {/* Right: Link Pill + Participants Count Pill + More Menu */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Share/Copy Invite Link Pill */}
+          <button
+            type="button"
+            onClick={() => void handleShareInvite()}
+            className="h-8 px-2.5 rounded-full border border-[#E8DDC5]/18 bg-[#173D30]/90 hover:bg-[#1E4B3C] text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center justify-center transition-colors cursor-pointer shrink-0"
+            title="Share or copy room invite link"
+            aria-label="Share or copy room invite link"
+          >
+            {copied ? (
+              <Check className="w-4 h-4 text-[#7AD3A8]" />
+            ) : (
+              <Link2 className="w-4 h-4 text-[#9670FF]" />
+            )}
+          </button>
+
+          {/* Room Participants Count Pill */}
           <button
             type="button"
             onClick={onOpenParticipants || (() => void handleShareInvite())}
-            className="h-8 px-2.5 rounded-full border border-[#E8DDC5]/20 bg-[#173D30] hover:bg-[#1E4B3C] text-xs font-medium text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
-            title="View room joiners, promote co-host, and manage permissions"
+            className="h-8 px-3 rounded-full border border-[#E8DDC5]/18 bg-[#173D30]/90 hover:bg-[#1E4B3C] text-xs font-mono font-medium text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+            title="View participants and permissions"
             aria-label="View room members and permissions"
           >
             <Users className="w-3.5 h-3.5 text-[#9670FF]" />
-            <span>
-              {totalOnline}/{SYNC_CONSTANTS.MAX_ROOM_PARTICIPANTS}
-            </span>
+            <span>{totalOnline}</span>
           </button>
 
-          {/* Media / Video Upload Button */}
-          {(canControl ?? isHost) ? (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={onChangeVideoClick}
-              className="h-8 px-2.5 rounded-full whitespace-nowrap"
-              leftIcon={<Film className="w-3.5 h-3.5" />}
-              title="Load YouTube link, video URL, or upload a movie file to watch together"
-              aria-label="Load watch media or upload video"
-            >
-              Media
-            </Button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleShareInvite()}
-              className="h-8 px-2.5 rounded-full border border-[#E8DDC5]/22 bg-[#173D30] hover:bg-[#1E4B3C] text-xs font-medium text-[#E8DDC5] hover:text-[#F7F4EC] inline-flex items-center gap-1 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
-              title="Share or copy room invite link"
-              aria-label="Share or copy room invite link"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-[#7AD3A8]" />
-              ) : (
-                <Share2 className="w-3.5 h-3.5 text-[#9670FF]" />
-              )}
-              <span>{copied ? 'Copied' : 'Invite'}</span>
-            </button>
-          )}
-
-          {renderVoiceControls(true)}
-
-          {/* Mobile Chat Toggle Button */}
-          {onToggleChat && (
-            <button
-              type="button"
-              onClick={onToggleChat}
-              className={`h-8 px-2.5 rounded-full border text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
-                isChatOpen
-                  ? 'bg-[#1E4B3C] border-[#9670FF]/50 text-[#F7F4EC]'
-                  : 'bg-[#173D30] border-[#E8DDC5]/20 text-[#E8DDC5] hover:text-[#F7F4EC]'
-              }`}
-              title={isChatOpen ? 'Minimize chat (Full Cinema)' : 'Open chat'}
-              aria-label={isChatOpen ? 'Minimize chat' : 'Open chat'}
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-[#9670FF]" />
-              <span className="hidden xs:inline">Chat</span>
-            </button>
-          )}
-
+          {/* More Actions Menu */}
           <div ref={mobileMenuRef} className="relative">
             <button
               type="button"
@@ -470,21 +444,27 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               className={`h-8 w-8 rounded-full border flex items-center justify-center transition-colors cursor-pointer ${
                 isMobileMenuOpen
                   ? 'bg-[#1E4B3C] border-[#9670FF]/60 text-[#F7F4EC]'
-                  : 'bg-[#173D30]/90 border-[#E8DDC5]/20 text-[#E8DDC5] hover:border-[#E8DDC5]/40 hover:text-[#F7F4EC]'
+                  : 'bg-[#173D30]/90 border-[#E8DDC5]/18 text-[#E8DDC5] hover:border-[#E8DDC5]/40 hover:text-[#F7F4EC]'
               }`}
               aria-haspopup="menu"
               aria-expanded={isMobileMenuOpen}
               aria-label="Room actions menu"
-              title="Invite, members, save, or leave room"
+              title="Room actions menu"
             >
-              <MoreHorizontal className="w-4 h-4" />
+              <MoreVertical className="w-4 h-4" />
             </button>
 
             {isMobileMenuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+8px)] w-64 rounded-2xl border border-[#E8DDC5]/18 bg-[#0E281F]/98 shadow-2xl backdrop-blur-md p-1.5 z-50"
+                className="absolute right-0 top-[calc(100%+8px)] w-64 rounded-2xl border border-[#E8DDC5]/18 bg-[#0E281F]/98 shadow-2xl backdrop-blur-md p-1.5 z-50 animate-cinemaFadeUp"
               >
+                {/* Room Info */}
+                <div className="px-3 py-2 border-b border-[#E8DDC5]/12">
+                  <p className="text-xs font-semibold text-[#F7F4EC] truncate">{room.title}</p>
+                  <p className="text-[11px] font-mono text-[#CDBF9F]/80 mt-0.5">Code: {room.code}</p>
+                </div>
+
                 <button
                   type="button"
                   role="menuitem"
@@ -547,23 +527,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                   </button>
                 )}
 
-                {onToggleChat && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onToggleChat();
-                    }}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <MessageSquare className="w-4 h-4 text-[#9670FF] shrink-0" />
-                      <span>{isChatOpen ? 'Minimize Chat (Cinema Mode)' : 'Open Chat'}</span>
-                    </span>
-                  </button>
-                )}
-
                 {(canControl ?? isHost) && (
                   <button
                     type="button"
@@ -575,7 +538,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[#F7F4EC] hover:bg-[#173D30] transition-colors cursor-pointer text-left"
                   >
                     <Film className="w-4 h-4 text-[#9670FF] shrink-0" />
-                    <span>Change / Upload Video</span>
+                    <span>Media / URL (Change Video)</span>
                   </button>
                 )}
 

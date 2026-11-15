@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Room, RoomMember, RoomRole, ParticipantPresence } from '@/core/types/room.types';
 import { copyTextToClipboard } from '@/lib/utils/share';
+import { useDrawerTransition } from '@/hooks/useDrawerTransition';
+import { cn } from '@/lib/utils/cn';
 import {
   Shield,
   ShieldCheck,
@@ -147,19 +149,29 @@ export const RoomParticipantsModal: React.FC<RoomParticipantsModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  if (!isOpen) return null;
+  const { isRendered, isAnimatingOut } = useDrawerTransition(isOpen);
+
+  if (!isRendered) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end pointer-events-none" role="dialog" aria-modal="true">
       {/* Soft non-intrusive backdrop on mobile (tap to close); hidden on desktop so video remains clickable */}
       <div
-        className="absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] transition-opacity drawer-backdrop pointer-events-auto lg:hidden"
+        className={cn(
+          'absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] pointer-events-auto lg:hidden',
+          isAnimatingOut ? 'drawer-backdrop-exit' : 'drawer-backdrop'
+        )}
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Wide cinema slide-over side drawer */}
-      <aside className="relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] drawer-enter pointer-events-auto">
+      <aside
+        className={cn(
+          'relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] pointer-events-auto',
+          isAnimatingOut ? 'drawer-exit' : 'drawer-enter'
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-[#E8DDC5]/12 px-4 py-3.5 shrink-0 bg-[#0E281F]">
           <div className="flex items-center gap-2.5 min-w-0">

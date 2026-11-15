@@ -5,12 +5,15 @@ import { ListPlus, X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { YouTubeBrowser } from '@/components/youtube/YouTubeBrowser';
 import { YouTubeVideoSummary } from '@/core/types/youtube.types';
+import { useDrawerTransition } from '@/hooks/useDrawerTransition';
+import { cn } from '@/lib/utils/cn';
 
 interface YouTubeQueueModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (videos: YouTubeVideoSummary[]) => Promise<void> | void;
   onBackToQueue?: () => void;
+  isAnimatingOut?: boolean;
 }
 
 export const YouTubeQueueModal: React.FC<YouTubeQueueModalProps> = ({
@@ -19,12 +22,14 @@ export const YouTubeQueueModal: React.FC<YouTubeQueueModalProps> = ({
   onAdd,
   onBackToQueue,
 }) => {
-  if (!isOpen) return null;
+  const { isRendered, isAnimatingOut } = useDrawerTransition(isOpen);
+  if (!isRendered) return null;
   return (
     <YouTubeQueueModalContent
       onClose={onClose}
       onAdd={onAdd}
       onBackToQueue={onBackToQueue}
+      isAnimatingOut={isAnimatingOut}
     />
   );
 };
@@ -33,6 +38,7 @@ const YouTubeQueueModalContent: React.FC<Omit<YouTubeQueueModalProps, 'isOpen'>>
   onClose,
   onAdd,
   onBackToQueue,
+  isAnimatingOut = false,
 }) => {
   const [selected, setSelected] = useState<YouTubeVideoSummary[]>([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -75,7 +81,10 @@ const YouTubeQueueModalContent: React.FC<Omit<YouTubeQueueModalProps, 'isOpen'>>
     <div className="fixed inset-0 z-50 flex justify-end pointer-events-none" role="dialog" aria-modal="true">
       {/* Soft non-intrusive backdrop on mobile (tap to close); hidden on desktop so video remains clickable */}
       <div
-        className="absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] transition-opacity drawer-backdrop pointer-events-auto lg:hidden"
+        className={cn(
+          'absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] pointer-events-auto lg:hidden',
+          isAnimatingOut ? 'drawer-backdrop-exit' : 'drawer-backdrop'
+        )}
         onClick={() => {
           if (!isAdding) onClose();
         }}
@@ -83,7 +92,12 @@ const YouTubeQueueModalContent: React.FC<Omit<YouTubeQueueModalProps, 'isOpen'>>
       />
 
       {/* Wide cinema slide-over side drawer */}
-      <aside className="relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] drawer-enter pointer-events-auto">
+      <aside
+        className={cn(
+          'relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] pointer-events-auto',
+          isAnimatingOut ? 'drawer-exit' : 'drawer-enter'
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-[#E8DDC5]/12 px-4 py-3.5 shrink-0 bg-[#0E281F]">
           <div className="flex items-center gap-2.5 min-w-0">

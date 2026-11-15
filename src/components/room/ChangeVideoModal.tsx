@@ -6,9 +6,12 @@ import { Button } from '@/components/ui/Button';
 import { extractYouTubeId } from '@/lib/utils/youtube';
 import { storageService } from '@/lib/services/storageService';
 import { bandwidthService, BandwidthMetrics } from '@/lib/services/bandwidthService';
+import { resolvePlayableVideoUrl } from '@/lib/services/videoLinkService';
 import { useSession } from '@/hooks/useSession';
 import { VideoSourceType } from '@/core/types/player.types';
 import { Tv, Link as LinkIcon, Upload, Check, AlertCircle, ShieldAlert, X, Film } from 'lucide-react';
+import { useDrawerTransition } from '@/hooks/useDrawerTransition';
+import { cn } from '@/lib/utils/cn';
 
 interface ChangeVideoModalProps {
   isOpen: boolean;
@@ -17,14 +20,17 @@ interface ChangeVideoModalProps {
   currentVideoUrl: string;
   onSelectVideo: (url: string, type: VideoSourceType) => Promise<void>;
   initialTab?: VideoSourceType;
+  isAnimatingOut?: boolean;
 }
 
 export const ChangeVideoModal: React.FC<ChangeVideoModalProps> = (props) => {
-  if (!props.isOpen) return null;
+  const { isRendered, isAnimatingOut } = useDrawerTransition(props.isOpen);
+  if (!isRendered) return null;
   return (
     <ChangeVideoModalContent
       key={`${props.roomId}:${props.currentVideoUrl}:${props.initialTab || 'youtube'}`}
       {...props}
+      isAnimatingOut={isAnimatingOut}
     />
   );
 };
@@ -35,6 +41,7 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
   currentVideoUrl,
   onSelectVideo,
   initialTab = 'youtube',
+  isAnimatingOut = false,
 }) => {
   const { user } = useSession();
   const [activeTab, setActiveTab] = useState<VideoSourceType>(initialTab);
@@ -113,10 +120,14 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
 
     setIsUploading(true);
     try {
-      await onSelectVideo(trimmed, 'url');
+      // Resolves Twitter/X posts to a direct MP4 and rejects web pages early.
+      const resolved = await resolvePlayableVideoUrl(trimmed);
+      await onSelectVideo(resolved.url, 'url');
       onClose();
-    } catch {
-      setError('Failed to update video URL.');
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to update video URL.'
+      );
     } finally {
       setIsUploading(false);
     }
@@ -195,7 +206,10 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
     >
       {/* Soft non-intrusive backdrop on mobile (tap to close); hidden on desktop so video remains clickable */}
       <div
-        className="absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] transition-opacity drawer-backdrop pointer-events-auto lg:hidden"
+        className={cn(
+          'absolute inset-0 bg-[#071611]/45 backdrop-blur-[1px] pointer-events-auto lg:hidden',
+          isAnimatingOut ? 'drawer-backdrop-exit' : 'drawer-backdrop'
+        )}
         onClick={() => {
           if (!isUploading) onClose();
         }}
@@ -203,7 +217,12 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
       />
 
       {/* Cinema slide-over side drawer */}
-      <aside className="relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] drawer-enter pointer-events-auto">
+      <aside
+        className={cn(
+          'relative z-10 flex h-full w-full max-w-lg lg:w-[32rem] xl:w-[36rem] lg:max-w-none flex-col border-l border-[#E8DDC5]/16 bg-[#0B1E17] shadow-[-28px_0_72px_rgba(0,0,0,0.65)] pointer-events-auto',
+          isAnimatingOut ? 'drawer-exit' : 'drawer-enter'
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-[#E8DDC5]/12 px-4 py-3.5 shrink-0 bg-[#0E281F]">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -329,12 +348,12 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
         {activeTab === 'url' && (
           <form onSubmit={handleDirectUrlSubmit} className="space-y-4">
             <Input
-              label="Direct Video URL (MP4, WebM)"
+              label="Video URL (MP4, WebM, HLS, Twitter/X)"
               placeholder="https://example.com/video.mp4"
               value={directUrlInput}
               onChange={(e) => setDirectUrlInput(e.target.value)}
               error={error}
-              helperText="Paste any publicly accessible direct video streaming link."
+              helperText="Paste a direct video file link or a Twitter/X post link — we'll resolve it automatically."
               leftIcon={<LinkIcon className="w-4 h-4" />}
               disabled={isUploading}
               tone="dark"
@@ -357,7 +376,7 @@ const ChangeVideoModalContent: React.FC<ChangeVideoModalProps> = ({
                 isLoading={isUploading}
                 leftIcon={<Check className="w-3.5 h-3.5" />}
               >
-                {isUploading ? 'Loading Stream…' : 'Load Video URL'}
+                {isUploading ? 'Resolving Link…' : 'Load Video URL'}
               </Button>
             </div>
           </form>

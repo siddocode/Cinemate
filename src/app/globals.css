@@ -77,7 +77,7 @@ body {
   animation: cinemaFadeUp 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Smooth drawer slide-over from right edge */
+/* Smooth drawer slide-over from right edge (luxury cinema motion) */
 @keyframes drawerSlideRight {
   from {
     transform: translateX(100%);
@@ -87,8 +87,21 @@ body {
   }
 }
 
+@keyframes drawerSlideRightExit {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
 .drawer-enter {
-  animation: drawerSlideRight 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: drawerSlideRight 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.drawer-exit {
+  animation: drawerSlideRightExit 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 @keyframes drawerBackdropFade {
@@ -100,6 +113,19 @@ body {
   }
 }
 
+@keyframes drawerBackdropFadeExit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .drawer-backdrop {
-  animation: drawerBackdropFade 180ms ease-out both;
+  animation: drawerBackdropFade 240ms ease-out both;
+}
+
+.drawer-backdrop-exit {
+  animation: drawerBackdropFadeExit 200ms ease-in both;
 }

@@ -15,7 +15,7 @@ export function describePlaybackError(
       code,
       title: 'This video could not be played',
       message:
-        'The direct video link may be offline, blocked by CORS, or in an unsupported format. Try another source.',
+        'The link may point to a web page instead of a video file, be offline, or be blocked by CORS. Paste a direct .mp4/.webm link, a Twitter/X post link, or use YouTube.',
     };
   }
 
